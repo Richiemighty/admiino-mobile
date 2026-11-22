@@ -29,7 +29,7 @@
 - Never alter production accounts, databases, credentials, domains, OAuth consoles, push-provider consoles, DNS, store listings or remote branches without an explicit approved task.
 - Do not run destructive commands, clean data, overwrite `.env` values, remove files wholesale, force-push, change remote URLs or merge branches without approval.
 - Never assume an existing `main` or `staging` is safe to rewrite. Inspect `git status`, branch, remotes and diff before work; report pre-existing changes and preserve them.
-- Work in a feature branch from the **approved mobile staging/integration branch**. If the branch strategy is not set up, propose it first; do not silently create protected branches.
+- **Temporary user-approved Git policy override:** commit and push approved mobile work directly to `main` until the product owner changes this policy. Do not create or use `staging` or feature branches for new work; preserve existing branches, especially `staging`, and never force-push or rewrite history. This override changes only the branch destination: all security, environment, permission, review, test, and deployment safeguards in this file remain in force. See `docs/decisions/TEMPORARY_MAIN_ONLY_GIT_WORKFLOW.md`.
 - Keep PRs small, with one phase/subphase objective. Do not combine design-system refactoring, auth, push and unrelated bug fixes.
 - In each response, state: files changed, commands run, tests passed/failed, remaining blockers and recommended next bounded step.
 

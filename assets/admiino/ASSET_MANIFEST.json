@@ -1,0 +1,134 @@
+{
+  "bundle": "Admiino Mobile Brand Assets v1",
+  "extract_into": "admiino-mobile/assets/",
+  "assets": [
+    {
+      "file": "assets/admiino/brand/logo-wordmark-original-transparent.png",
+      "size_px": "256x256",
+      "mode": "RGBA",
+      "bytes": 13877,
+      "sha256": "3321c50ac926da02344a66160bdb2c802f2e45734b5e54fab6b4ab2f7e5fe342",
+      "use": "Canonical user-supplied logo. Use where exact brand artwork matters."
+    },
+    {
+      "file": "assets/admiino/brand/logo-wordmark-original-white.png",
+      "size_px": "256x256",
+      "mode": "RGBA",
+      "bytes": 13155,
+      "sha256": "70bf2431ded1bd5844876c2c230e7a7b1bda0817ca50bab208120e13ff74b56f",
+      "use": "Canonical user-supplied logo with white background, for reference."
+    },
+    {
+      "file": "assets/admiino/brand/logo-wordmark-original-small-transparent.png",
+      "size_px": "64x64",
+      "mode": "RGBA",
+      "bytes": 1848,
+      "sha256": "5bd0d65957a476bd48fa43e647c962c2c0b29525cc90fc902869c054f7d6e0a9",
+      "use": "Small original logo reference; not for large upscaling."
+    },
+    {
+      "file": "assets/admiino/brand/logo-wordmark-refined-transparent.png",
+      "size_px": "2172x724",
+      "mode": "RGBA",
+      "bytes": 411891,
+      "sha256": "c2a351f36f425f5196762b36159492dec1137c3bc444d70d6d714d312bf4e1a4",
+      "use": "Generated high-resolution recreation; visual approximation, review against original before replacing canonical logo."
+    },
+    {
+      "file": "assets/admiino/brand/logo-monogram-generated-transparent.png",
+      "size_px": "1254x1254",
+      "mode": "RGBA",
+      "bytes": 270987,
+      "sha256": "d3cebf0c4ad89c08574dada02843032b702a06d642ab91ff77bb9c136350c396",
+      "use": "Generated standalone brand monogram concept. Keep transparent."
+    },
+    {
+      "file": "assets/admiino/icons/app-icon-concept-generated.png",
+      "size_px": "1254x1254",
+      "mode": "RGB",
+      "bytes": 1337337,
+      "sha256": "72a6ac943191a6d9cfb72fe262585347926a134bf56183031dc60c321a331d69",
+      "use": "Original generated icon mockup; rounded corners are baked into the artwork. Not the configured iOS source."
+    },
+    {
+      "file": "assets/admiino/icons/app-icon-ios-1024.png",
+      "size_px": "1024x1024",
+      "mode": "RGB",
+      "bytes": 48233,
+      "sha256": "d5073cf22d2dd4d9aecbb03ef4cd3d5eeeed3b846fb5e5ae9e2996584a639825",
+      "use": "Edge-to-edge 1024x1024 opaque PNG for iOS app icon (generated production-format candidate)."
+    },
+    {
+      "file": "assets/admiino/icons/app-icon-android-store-512.png",
+      "size_px": "512x512",
+      "mode": "RGB",
+      "bytes": 20171,
+      "sha256": "fea85664c1c42554ede968ec433bc11dc9ae32fd29ff07984aa016910be51104",
+      "use": "Opaque 512x512 Play Store listing icon candidate."
+    },
+    {
+      "file": "assets/admiino/icons/android-adaptive-foreground.png",
+      "size_px": "432x432",
+      "mode": "RGBA",
+      "bytes": 7845,
+      "sha256": "eef6a741fe22de0b286c17abd6658e2c89b542a236e731a209f3475be424fccc",
+      "use": "432x432 transparent foreground at conservative safe-zone scale."
+    },
+    {
+      "file": "assets/admiino/icons/android-adaptive-background.png",
+      "size_px": "432x432",
+      "mode": "RGB",
+      "bytes": 1173,
+      "sha256": "2f82f225f4d74f7a0cb3d87544b21989cc89ec2a1b14cb8d995b21de1af70326",
+      "use": "432x432 solid indigo adaptive icon background."
+    },
+    {
+      "file": "assets/admiino/icons/android-adaptive-monochrome.png",
+      "size_px": "432x432",
+      "mode": "RGBA",
+      "bytes": 6773,
+      "sha256": "35467f67abf07ced4c553ac6a78d99e4a0aee5aeebeaf8d722b27ad58e693ee3",
+      "use": "432x432 white alpha mask for Android themed icon."
+    },
+    {
+      "file": "assets/admiino/splash/native-splash-wordmark-light.png",
+      "size_px": "1200x1200",
+      "mode": "RGBA",
+      "bytes": 154695,
+      "sha256": "55609999d62495ffd934898e795a20f1f09898167bc8c813e8328be627e03597",
+      "use": "1200x1200 transparent wordmark canvas for native splash; set backgroundColor separately."
+    },
+    {
+      "file": "assets/admiino/splash/native-splash-mark-dark.png",
+      "size_px": "1200x1200",
+      "mode": "RGBA",
+      "bytes": 22342,
+      "sha256": "e9891a4c232b127c052ff47fbf0caf62e0d6c7a72b94ab8beddac411d196b496",
+      "use": "1200x1200 transparent white/yellow monogram canvas for dark native splash."
+    },
+    {
+      "file": "assets/admiino/splash/splash-productivity-illustration.png",
+      "size_px": "941x1672",
+      "mode": "RGB",
+      "bytes": 1508005,
+      "sha256": "2308bdddd27a31295d2ed5ec26246582bce7586dd0bc27e27264416bf6058594",
+      "use": "Tall 9:16 illustrated startup/welcome art; use within React Native welcome screen, NOT as OS native splash image."
+    },
+    {
+      "file": "assets/admiino/onboarding/onboarding-productivity-hero.png",
+      "size_px": "1122x1402",
+      "mode": "RGB",
+      "bytes": 1632017,
+      "sha256": "1cec2c7212e0b0f5b21e8152c804b11587e0d28b1e470b654dd47ddcf132854d",
+      "use": "Generated 4:5 productivity scene for onboarding/get-started screens."
+    },
+    {
+      "file": "assets/admiino/onboarding/mascot-professional-phone.png",
+      "size_px": "1086x1448",
+      "mode": "RGBA",
+      "bytes": 583873,
+      "sha256": "658f5b05bd5cb0b42465acb1972844c050c2433acaa33dd440a836dcbd14e04c",
+      "use": "Transparent standing professional mascot, resizable in onboarding/empty states."
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from '@jest/globals';
 import { cleanup } from '@testing-library/react-native';
 
-import { renderWithProviders } from '../src/test/render';
-import Index from './index';
+import Index from '../../../app/index';
+import { renderWithProviders } from '../render';
 
 afterEach(() => {
   cleanup();
@@ -13,10 +13,11 @@ afterEach(() => {
 
 describe('starter application', () => {
   it('renders the setup verification screen', async () => {
-    const { getByText } = await renderWithProviders(<Index />);
+    const { getByRole, getByText } = await renderWithProviders(<Index />);
 
     expect(getByText('Admiino Mobile')).toBeTruthy();
     expect(getByText('Application setup completed successfully.')).toBeTruthy();
+    expect(getByRole('link', { name: 'Open design system gallery' })).toBeTruthy();
   });
 
   it('shows the temporary development environment indicator', async () => {

@@ -7,7 +7,7 @@ export const Stack = Object.assign(RouteContainer, { Screen: () => null });
 export const Tabs = Object.assign(RouteContainer, { Screen: () => null });
 export const Slot = RouteContainer;
 export const Link = RouteContainer;
-export const Redirect = () => null;
+export const Redirect = jest.fn(() => null);
 export const router = {
   back: jest.fn(),
   canGoBack: jest.fn(() => true),

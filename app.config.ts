@@ -46,17 +46,17 @@ export default function appConfig(): ExpoConfig {
     slug: 'admiino-mobile',
     version: '1.0.0',
     orientation: 'portrait',
-    icon: './assets/images/icon.png',
+    icon: './assets/admiino/icons/app-icon-ios-1024.png',
     scheme: identity.scheme,
     userInterfaceStyle: 'automatic',
     ...(iosBundleIdentifier ? { ios: { bundleIdentifier: iosBundleIdentifier } } : {}),
     android: {
       ...(androidPackage ? { package: androidPackage } : {}),
       adaptiveIcon: {
-        backgroundColor: '#132238',
-        foregroundImage: './assets/images/android-icon-foreground.png',
-        backgroundImage: './assets/images/android-icon-background.png',
-        monochromeImage: './assets/images/android-icon-monochrome.png',
+        backgroundColor: '#1E149F',
+        foregroundImage: './assets/admiino/icons/android-adaptive-foreground.png',
+        backgroundImage: './assets/admiino/icons/android-adaptive-background.png',
+        monochromeImage: './assets/admiino/icons/android-adaptive-monochrome.png',
       },
     },
     web: {
@@ -68,9 +68,10 @@ export default function appConfig(): ExpoConfig {
       [
         'expo-splash-screen',
         {
-          backgroundColor: '#132238',
-          image: './assets/images/splash-icon.png',
-          imageWidth: 76,
+          backgroundColor: '#FFFFFF',
+          image: './assets/admiino/splash/native-splash-wordmark-light.png',
+          imageWidth: 240,
+          resizeMode: 'contain',
         },
       ],
     ],

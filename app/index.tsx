@@ -1,55 +1,64 @@
-import { StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Link } from 'expo-router';
+import { Pressable, StyleSheet, View } from 'react-native';
 
+import { AppScreen, AppText } from '../src/components/ui';
 import { getAppEnvironment } from '../src/config/env';
 
 export default function Index() {
   const { appEnv } = getAppEnvironment();
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <AppScreen padding="xl" scrollable>
       <View style={styles.content}>
-        <Text accessibilityRole="header" style={styles.title}>
+        <AppText accessibilityRole="header" style={styles.title} variant="title">
           Admiino Mobile
-        </Text>
-        <Text style={styles.message}>Application setup completed successfully.</Text>
+        </AppText>
+        <AppText style={styles.message} tone="secondary">
+          Application setup completed successfully.
+        </AppText>
         {appEnv !== 'production' && (
-          <Text style={styles.environment}>
+          <AppText style={styles.environment} tone="secondary" variant="caption">
             {appEnv === 'development' ? 'Development' : 'Staging'}
-          </Text>
+          </AppText>
+        )}
+        {__DEV__ && (
+          <Link asChild href="./dev/ui-kit">
+            <Pressable
+              accessibilityLabel="Open design system gallery"
+              accessibilityRole="link"
+              style={styles.galleryLink}
+            >
+              <AppText tone="link" variant="label">
+                Design system gallery
+              </AppText>
+            </Pressable>
+          </Link>
         )}
       </View>
-    </SafeAreaView>
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
   content: {
     flex: 1,
-    alignItems: 'center',
+    alignItems: 'stretch',
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
   title: {
-    color: '#132238',
-    fontSize: 28,
-    fontWeight: '700',
     textAlign: 'center',
   },
   message: {
-    color: '#46566b',
-    fontSize: 16,
     marginTop: 12,
     textAlign: 'center',
   },
   environment: {
-    color: '#596b82',
-    fontSize: 13,
-    fontWeight: '600',
     marginTop: 20,
+  },
+  galleryLink: {
+    minHeight: 48,
+    justifyContent: 'center',
+    marginTop: 24,
   },
 });
