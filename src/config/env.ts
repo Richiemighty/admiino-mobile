@@ -178,7 +178,10 @@ export function validateEnvironment(
     }
     if (
       !isLoopbackHost(apiUrl.hostname) &&
-      !isApprovedHost(apiUrl, options.approvedApiHosts?.development ?? APPROVED_API_HOSTS.development)
+      !isApprovedHost(
+        apiUrl,
+        options.approvedApiHosts?.development ?? APPROVED_API_HOSTS.development,
+      )
     ) {
       throw new EnvironmentConfigError(
         'The development API host is not allowlisted; use a local endpoint or an approved development host.',
@@ -188,9 +191,7 @@ export function validateEnvironment(
     if (apiUrl.protocol !== 'https:') {
       throw new EnvironmentConfigError(`${appEnv} API URLs must use HTTPS.`);
     }
-    if (
-      !isApprovedHost(apiUrl, options.approvedApiHosts?.[appEnv] ?? APPROVED_API_HOSTS[appEnv])
-    ) {
+    if (!isApprovedHost(apiUrl, options.approvedApiHosts?.[appEnv] ?? APPROVED_API_HOSTS[appEnv])) {
       throw new EnvironmentConfigError(
         `The ${appEnv} API host is not allowlisted; host verification and approval are required.`,
       );
@@ -198,11 +199,7 @@ export function validateEnvironment(
   }
 
   const apiBaseUrl = apiUrl.origin;
-  const websocketUrl = validateWebSocketUrl(
-    apiBaseUrl,
-    deriveWebSocketUrl(apiBaseUrl),
-    appEnv,
-  );
+  const websocketUrl = validateWebSocketUrl(apiBaseUrl, deriveWebSocketUrl(apiBaseUrl), appEnv);
 
   return { appEnv, apiBaseUrl, websocketUrl };
 }
@@ -213,9 +210,7 @@ function backendConnectivityRequired(value: string | undefined): boolean {
   throw new EnvironmentConfigError('EXPO_PUBLIC_API_REQUIRED must be either true or false.');
 }
 
-export function getAppEnvironment(
-  options: AppEnvironmentOptions = {},
-): ValidatedEnvironment {
+export function getAppEnvironment(options: AppEnvironmentOptions = {}): ValidatedEnvironment {
   return validateEnvironment(
     {
       appEnv: process.env.EXPO_PUBLIC_APP_ENV,

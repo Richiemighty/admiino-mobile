@@ -1,7 +1,4 @@
-import {
-  EnvironmentConfigError,
-  getAppEnvironment,
-} from '../src/config/env.ts';
+import { EnvironmentConfigError, getAppEnvironment } from '../src/config/env.ts';
 
 try {
   const environment = getAppEnvironment({

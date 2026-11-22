@@ -1,14 +1,8 @@
 import type { ExpoConfig } from 'expo/config';
 
-import {
-  getAppEnvironment,
-  type AppEnvironmentName,
-} from './src/config/env.ts';
+import { type AppEnvironmentName, getAppEnvironment } from './src/config/env.ts';
 
-const APP_IDENTITIES: Record<
-  AppEnvironmentName,
-  { displayName: string; scheme: string }
-> = {
+const APP_IDENTITIES: Record<AppEnvironmentName, { displayName: string; scheme: string }> = {
   development: {
     displayName: 'Admiino Mobile (Development)',
     scheme: 'admiinomobile-dev',
@@ -55,9 +49,7 @@ export default function appConfig(): ExpoConfig {
     icon: './assets/images/icon.png',
     scheme: identity.scheme,
     userInterfaceStyle: 'automatic',
-    ...(iosBundleIdentifier
-      ? { ios: { bundleIdentifier: iosBundleIdentifier } }
-      : {}),
+    ...(iosBundleIdentifier ? { ios: { bundleIdentifier: iosBundleIdentifier } } : {}),
     android: {
       ...(androidPackage ? { package: androidPackage } : {}),
       adaptiveIcon: {

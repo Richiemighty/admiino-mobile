@@ -14,8 +14,17 @@ Use the Expo CLI to open the app on a connected device, simulator, or emulator. 
 ```bash
 npm run typecheck
 npm run lint
+npm run format:check
+npm test
+npm run test:environment
 npx expo-doctor
 ```
+
+## Code quality and tests
+
+TypeScript strict mode and unused-symbol checks are enabled. ESLint uses the Expo flat configuration, reports unused imports/variables as errors, and sorts imports. Prettier uses single quotes, semicolons, trailing commas, and a 100-character print width; approved product documents are intentionally excluded from automatic formatting.
+
+Use `npm test` for Jest/React Native Testing Library component tests, `npm run test:environment` for the P03 environment validator suite, and `npm run format:check` before opening a PR. Tests mock navigation, native boundaries, secure storage, and networking; they must not contact a backend. Use `src/test/fixtures/network.ts` to return synthetic JSON responses through the reset `global.fetch` mock. Future auth, permission, workspace, task, and notification fixtures must follow approved response contracts and use synthetic IDs/data.
 
 ## Environment setup
 

@@ -1,10 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  validateEnvironment,
-  validateWebSocketUrl,
-} from '../src/config/env.ts';
+import { validateEnvironment, validateWebSocketUrl } from '../src/config/env.ts';
 
 test('accepts a local development API origin', () => {
   assert.deepEqual(
@@ -21,10 +18,11 @@ test('accepts a local development API origin', () => {
 });
 
 test('allows the setup screen to run in explicit development mode without a backend', () => {
-  assert.deepEqual(
-    validateEnvironment({ appEnv: 'development' }),
-    { appEnv: 'development', apiBaseUrl: null, websocketUrl: null },
-  );
+  assert.deepEqual(validateEnvironment({ appEnv: 'development' }), {
+    appEnv: 'development',
+    apiBaseUrl: null,
+    websocketUrl: null,
+  });
 });
 
 test('accepts a staging fixture only when its host is explicitly allowlisted', () => {
@@ -49,11 +47,7 @@ test('accepts a production fixture only when its host is explicitly approved', (
 
 test('rejects a missing API URL when connectivity is required', () => {
   assert.throws(
-    () =>
-      validateEnvironment(
-        { appEnv: 'development' },
-        { backendConnectivityRequired: true },
-      ),
+    () => validateEnvironment({ appEnv: 'development' }, { backendConnectivityRequired: true }),
     /EXPO_PUBLIC_API_BASE_URL is required/,
   );
 });
@@ -144,11 +138,7 @@ test('rejects an invalid environment name', () => {
 test('rejects a WebSocket URL for a different, production environment', () => {
   assert.throws(
     () =>
-      validateWebSocketUrl(
-        'https://staging-api.example.test',
-        'wss://api.admiino.com',
-        'staging',
-      ),
+      validateWebSocketUrl('https://staging-api.example.test', 'wss://api.admiino.com', 'staging'),
     /same host and transport security/,
   );
 });

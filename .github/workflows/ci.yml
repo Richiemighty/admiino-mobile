@@ -1,0 +1,49 @@
+name: Pull request validation
+
+on:
+  pull_request:
+    branches:
+      - staging
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate mobile baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Validate environment configuration
+        run: npm run validate:environment
+        env:
+          EXPO_PUBLIC_APP_ENV: development
+          EXPO_PUBLIC_API_REQUIRED: 'false'
+
+      - name: Test environment validation
+        run: npm run test:environment
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Run unit and component tests
+        run: npm test -- --ci
