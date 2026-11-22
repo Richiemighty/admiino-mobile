@@ -1,56 +1,60 @@
-# Welcome to your Expo app 👋
+# Admiino Mobile
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Expo, React Native, TypeScript, and Expo Router starter for iOS and Android.
 
-## Get started
-
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run locally
 
 ```bash
-npm run reset-project
+npm install
+npm start
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+Use the Expo CLI to open the app on a connected device, simulator, or emulator. The current entry route is `app/index.tsx`; shared code belongs in `src/`.
 
-### Other setup steps
+```bash
+npm run typecheck
+npm run lint
+npx expo-doctor
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Environment setup
 
-## Learn more
+Copy `.env.example` to `.env.local` for local development. The starter screen runs in development without making backend requests; the API origin is used only when application code explicitly makes a request.
 
-To learn more about developing your project with Expo, look at the following resources:
+```bash
+npm run validate:environment
+npm run test:environment
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Staging and production hosts are allowlisted only after verification. EAS profiles are in `eas.json`; an account owner must configure the remote EAS project and environment variables before any EAS build. No cloud builds are started by this setup.
 
-## Join the community
+## Development builds
 
-Join our community of developers creating universal apps.
+Expo Go is a shared native container with a fixed set of native modules. The installed Expo Development Client is built for this app and can include its configured native modules; both use Metro for JavaScript development and refresh.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Native builds are blocked until the app owner approves the iOS bundle identifier and Android package identifier. Once approved, configure the corresponding `EXPO_IOS_BUNDLE_IDENTIFIER` or `EXPO_ANDROID_PACKAGE_IDENTIFIER` locally or in the EAS environment:
+
+- **iOS simulator:** `npx expo run:ios --simulator "iPhone 16"` (requires Xcode and the approved identifier).
+- **Android emulator/device:** start an Android emulator or connect an authorized device, then run `npx expo run:android` (requires Android tooling and the approved identifier).
+- **EAS Android development build:** after an account owner links/configures the EAS project and environment, run `npx eas-cli build --profile development --platform android`. EAS builds may consume paid resources; this setup did not run one.
+
+The current `development` EAS profile enables the development client and internal distribution. The `preview` and `production` profiles are configuration only; neither has been built or submitted.
+
+The starter screen only verifies that the application boots. There is no backend connection, authentication, or final app identifier configured. iOS bundle and Android package identifiers remain pending decisions.
+
+## Approved project documents
+
+Place the approved project rules at the repository root as `AGENTS.md`.
+
+- UX Blueprint: `docs/product/` (Markdown or Word format).
+- Development Playbook: `docs/planning/` (Word format).
+
+Do not replace an approved document when adding or updating files.
+
+## Branching proposal
+
+- `main`: approved releases.
+- `staging`: development integration.
+- `feature/*`: individual development phases.
+
+Branches and remote changes are managed only with explicit approval.
