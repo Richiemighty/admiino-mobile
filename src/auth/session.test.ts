@@ -1,7 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 
 import { ApiClient } from '../api/client';
-import { SessionService } from './session';
+import { isJwtExpired, SessionService } from './session';
 import type { SecureSessionStorage } from './sessionStorage';
 
 const createStorage = (): SecureSessionStorage => {
@@ -31,6 +31,10 @@ const createStorage = (): SecureSessionStorage => {
 };
 
 describe('P07 session foundation', () => {
+  it('detects expired JWT payloads', () => {
+    const payload = btoa(JSON.stringify({ exp: 100 }));
+    expect(isJwtExpired(`header.${payload}.signature`, 101000)).toBe(true);
+  });
   it('stores a login access token and first workspace securely', async () => {
     const storage = createStorage();
     const client = new ApiClient(
@@ -83,6 +87,24 @@ describe('P07 session foundation', () => {
     );
     await expect(new SessionService(storage, client).restoreSession()).resolves.toBeNull();
     expect(storage.clearSession).toHaveBeenCalled();
+  });
+
+  it('preserves a session for 403 and 423 restore responses', async () => {
+    for (const status of [403, 423]) {
+      const storage = createStorage();
+      jest
+        .mocked(storage.getAccessToken)
+        .mockResolvedValue(`header.${btoa(JSON.stringify({ exp: 4100000000 }))}.signature`);
+      const client = new ApiClient(
+        'https://example.com/api/v1',
+        jest.fn(
+          async () =>
+            new Response(JSON.stringify({ status: 'error', message: 'Denied' }), { status }),
+        ) as unknown as typeof fetch,
+      );
+      await expect(new SessionService(storage, client).restoreSession()).resolves.not.toBeNull();
+      expect(storage.clearSession).not.toHaveBeenCalled();
+    }
   });
 
   it('removes tokens on logout', async () => {

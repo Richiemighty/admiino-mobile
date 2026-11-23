@@ -8,6 +8,10 @@ import { onboardingRoutes } from '../../features/onboarding/routes';
 import { isOnboardingCompleted, markOnboardingCompleted } from '../../features/onboarding/storage';
 import { renderWithProviders } from '../render';
 
+jest.mock('../../auth/AuthProvider', () => ({
+  useAuth: () => ({ status: 'signed-out' }),
+}));
+
 describe('application launch route', () => {
   beforeEach(async () => {
     await AsyncStorage.clear();

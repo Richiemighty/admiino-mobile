@@ -3,6 +3,21 @@ import type { ApiClient } from '../api/client';
 import type { LoginRequest, LoginResponse, MeResponse, WorkspacesResponse } from '../api/types';
 import { type SecureSessionStorage, secureSessionStorage } from './sessionStorage';
 
+export function isJwtExpired(token: string, nowMs = Date.now()): boolean {
+  try {
+    const payloadPart = token.split('.')[1];
+    if (!payloadPart) return true;
+    const base64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+    const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+    const decoded = globalThis.atob(`${base64}${padding}`);
+    const payload = JSON.parse(decoded) as { exp?: unknown };
+    if (typeof payload.exp !== 'number') return true;
+    return payload.exp * 1000 <= nowMs;
+  } catch {
+    return true;
+  }
+}
+
 export class SessionService {
   private restorePromise: Promise<string | null> | null = null;
 
@@ -24,14 +39,21 @@ export class SessionService {
   private async validateStoredSession(): Promise<string | null> {
     const token = await this.storage.getAccessToken();
     if (!token) return null;
+    if (isJwtExpired(token)) {
+      await this.storage.clearSession();
+      return null;
+    }
 
     try {
       await this.client.get<MeResponse>('/auth/me', { token });
       return token;
     } catch (error) {
-      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      if (error instanceof ApiError && error.status === 401) {
         await this.storage.clearSession();
         return null;
+      }
+      if (error instanceof ApiError && (error.status === 403 || error.status === 423)) {
+        return token;
       }
       throw error;
     }

@@ -2,6 +2,8 @@ import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
+import { useAuth } from '../../auth/AuthProvider';
 import { AppButton, AppInput, AppText, InlineError } from '../../components/ui';
 import { themeTokens } from '../../theme/tokens';
 import { onboardingRoutes } from '../onboarding/routes';
@@ -16,6 +18,7 @@ export function SignInScreen() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const submitting = useRef(false);
+  const { login } = useAuth();
 
   const submit = async () => {
     if (submitting.current) return;
@@ -30,10 +33,24 @@ export function SignInScreen() {
 
     submitting.current = true;
     setLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    setLoading(false);
-    setStatus('Live sign-in is awaiting backend integration. No account was accessed.');
-    submitting.current = false;
+    try {
+      await login({ email: normalizedEmail, password, accountType: 'workspace' });
+      setLoading(false);
+      submitting.current = false;
+      router.replace('/authenticated');
+    } catch (error) {
+      setLoading(false);
+      submitting.current = false;
+      if (error instanceof ApiNetworkError || error instanceof ApiTimeoutError) {
+        setStatus(error.message);
+      } else if (error instanceof ApiError) {
+        setStatus(error.message);
+      } else if (error instanceof Error) {
+        setStatus(error.message);
+      } else {
+        setStatus('Sign-in could not be completed. Please try again.');
+      }
+    }
   };
 
   return (

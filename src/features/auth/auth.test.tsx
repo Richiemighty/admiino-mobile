@@ -13,6 +13,14 @@ jest.mock('expo-web-browser', () => ({
   openBrowserAsync: jest.fn(async () => ({ type: 'opened' })),
 }));
 
+jest.mock('../../auth/AuthProvider', () => ({
+  useAuth: () => ({
+    login: jest.fn(async () => {
+      throw new Error('Live sign-in is awaiting backend integration.');
+    }),
+  }),
+}));
+
 describe('P06B authentication UI', () => {
   beforeEach(() => {
     jest.mocked(router.push).mockClear();
@@ -59,9 +67,7 @@ describe('P06B authentication UI', () => {
     expect(global.fetch).not.toHaveBeenCalled();
 
     await waitFor(() =>
-      expect(
-        screen.getByText('Live sign-in is awaiting backend integration. No account was accessed.'),
-      ).toBeTruthy(),
+      expect(screen.getByText(/Live sign-in is awaiting backend integration/)).toBeTruthy(),
     );
   });
 

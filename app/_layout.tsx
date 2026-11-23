@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
+import { AuthProvider } from '../src/auth/AuthProvider';
 import { ThemeProvider, useAppTheme } from '../src/theme';
 
 function AppNavigation() {
@@ -17,7 +18,9 @@ function AppNavigation() {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <AppNavigation />
+      <AuthProvider>
+        <AppNavigation />
+      </AuthProvider>
     </ThemeProvider>
   );
 }
