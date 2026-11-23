@@ -1,0 +1,63 @@
+{
+  "pack_version": "P06A-existing-artwork-fallback-1.0",
+  "provenance": "Repackaged from existing Admiino assets after new image-generation service failed. No new illustrations were generated.",
+  "extraction_root": "admiino-mobile/assets/",
+  "existing_logo_in_repo": "assets/admiino/brand/logo-wordmark-original-transparent.png",
+  "artworks": [
+    {
+      "file": "assets/admiino/onboarding/p06a/welcome-mascot-transparent.png",
+      "screen": "Welcome",
+      "source": "Admiino_Mobile_Assets_v1.zip:admiino/onboarding/mascot-professional-phone.png",
+      "size_px": "1086x1448",
+      "mode": "RGBA",
+      "sha256": "658f5b05bd5cb0b42465acb1972844c050c2433acaa33dd440a836dcbd14e04c",
+      "bytes": 583873,
+      "usage_note": "Transparent character illustration; render original Admiino Logo component separately.",
+      "brand_wordmark_embedded": false
+    },
+    {
+      "file": "assets/admiino/onboarding/p06a/onboarding-01-organise-work.png",
+      "screen": "Organise your work",
+      "source": "Admiino_Mobile_Assets_v1.zip:admiino/onboarding/onboarding-productivity-hero.png",
+      "size_px": "1122x1402",
+      "mode": "RGB",
+      "sha256": "1cec2c7212e0b0f5b21e8152c804b11587e0d28b1e470b654dd47ddcf132854d",
+      "bytes": 1632017,
+      "usage_note": "Task boards, checklists, planning. Includes baked-in wordmark.",
+      "brand_wordmark_embedded": true
+    },
+    {
+      "file": "assets/admiino/onboarding/p06a/onboarding-02-work-together.png",
+      "screen": "Work better together",
+      "source": "admiino_productivity_app_splash_illustration.png",
+      "size_px": "941x1672",
+      "mode": "RGB",
+      "sha256": "2308bdddd27a31295d2ed5ec26246582bce7586dd0bc27e27264416bf6058594",
+      "bytes": 1508005,
+      "usage_note": "Shows a team/group motif, but not a dedicated collaboration illustration. Includes baked-in wordmark.",
+      "brand_wordmark_embedded": true
+    },
+    {
+      "file": "assets/admiino/onboarding/p06a/onboarding-03-track-progress.png",
+      "screen": "Stay on top of everything",
+      "source": "admiino_productivity_orbit.png",
+      "size_px": "1122x1402",
+      "mode": "RGB",
+      "sha256": "1cec2c7212e0b0f5b21e8152c804b11587e0d28b1e470b654dd47ddcf132854d",
+      "bytes": 1632017,
+      "usage_note": "Shows task, calendar, progress and goals. Includes baked-in wordmark.",
+      "brand_wordmark_embedded": true
+    },
+    {
+      "file": "assets/admiino/onboarding/p06a/account-choice-productivity-hero.png",
+      "screen": "Account choice",
+      "source": "imagegen.png",
+      "size_px": "941x1672",
+      "mode": "RGB",
+      "sha256": "2308bdddd27a31295d2ed5ec26246582bce7586dd0bc27e27264416bf6058594",
+      "bytes": 1508005,
+      "usage_note": "Existing productivity illustration. Includes baked-in wordmark.",
+      "brand_wordmark_embedded": true
+    }
+  ]
+}

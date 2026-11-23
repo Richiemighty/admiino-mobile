@@ -1,64 +1,45 @@
-import { Link } from 'expo-router';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 
-import { AppScreen, AppText } from '../src/components/ui';
-import { getAppEnvironment } from '../src/config/env';
+import { AppScreen, InlineError, LoadingState } from '../src/components/ui';
+import { onboardingRoutes } from '../src/features/onboarding/routes';
+import { isOnboardingCompleted } from '../src/features/onboarding/storage';
 
 export default function Index() {
-  const { appEnv } = getAppEnvironment();
+  const [attempt, setAttempt] = useState(0);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    isOnboardingCompleted().then(
+      (completed) => {
+        if (active) {
+          router.replace(completed ? onboardingRoutes.accountChoice : onboardingRoutes.welcome);
+        }
+      },
+      () => {
+        if (active) setError(true);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [attempt]);
 
   return (
-    <AppScreen padding="xl" scrollable>
-      <View style={styles.content}>
-        <AppText accessibilityRole="header" style={styles.title} variant="title">
-          Admiino Mobile
-        </AppText>
-        <AppText style={styles.message} tone="secondary">
-          Application setup completed successfully.
-        </AppText>
-        {appEnv !== 'production' && (
-          <AppText style={styles.environment} tone="secondary" variant="caption">
-            {appEnv === 'development' ? 'Development' : 'Staging'}
-          </AppText>
-        )}
-        {__DEV__ && (
-          <Link asChild href="./dev/ui-kit">
-            <Pressable
-              accessibilityLabel="Open design system gallery"
-              accessibilityRole="link"
-              style={styles.galleryLink}
-            >
-              <AppText tone="link" variant="label">
-                Design system gallery
-              </AppText>
-            </Pressable>
-          </Link>
-        )}
-      </View>
+    <AppScreen padding="xl">
+      {error ? (
+        <InlineError
+          message="We could not check your onboarding status."
+          onRetry={() => {
+            setError(false);
+            setAttempt((current) => current + 1);
+          }}
+          retryLabel="Try again"
+        />
+      ) : (
+        <LoadingState label="Preparing your Admiino experience" variant="fullScreen" />
+      )}
     </AppScreen>
   );
 }
-
-const styles = StyleSheet.create({
-  content: {
-    flex: 1,
-    alignItems: 'stretch',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  message: {
-    marginTop: 12,
-    textAlign: 'center',
-  },
-  environment: {
-    marginTop: 20,
-  },
-  galleryLink: {
-    minHeight: 48,
-    justifyContent: 'center',
-    marginTop: 24,
-  },
-});

@@ -7,6 +7,7 @@ jest.mock('expo-router', () => require('./mocks/expo-router'));
 jest.mock('expo-symbols', () => ({
   SymbolView: () => null,
 }));
+jest.mock('@react-native-async-storage/async-storage', () => require('./mocks/async-storage'));
 jest.mock('expo-secure-store', () => require('./mocks/expo-secure-store'), {
   virtual: true,
 });

@@ -73,6 +73,7 @@ export function AppButton({
       borderWidth: variant === 'outline' ? 1 : 0,
       borderColor: colors.border,
       opacity: isDisabled ? 0.55 : pressed ? 0.82 : 1,
+      transform: [{ scale: pressed && !isDisabled ? 0.98 : 1 }],
     },
     style,
   ];
