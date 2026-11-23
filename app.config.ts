@@ -65,6 +65,7 @@ export default function appConfig(): ExpoConfig {
     },
     plugins: [
       'expo-router',
+      'expo-secure-store',
       [
         'expo-splash-screen',
         {

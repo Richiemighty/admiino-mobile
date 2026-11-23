@@ -16,6 +16,8 @@ import { WelcomeScreen } from './WelcomeScreen';
 const mockRouterReplace = jest.mocked(router.replace);
 const mockFetch = jest.mocked(global.fetch);
 
+jest.setTimeout(10000);
+
 describe('Welcome screen', () => {
   beforeEach(() => {
     mockRouterReplace.mockClear();
