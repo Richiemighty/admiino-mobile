@@ -42,7 +42,7 @@ This matrix defines the app-side environment names and the backend hosts observe
 
 - **Purpose:** Eventual public iOS and Android releases after explicit release approval.
 - **Environment name:** `production`.
-- **API base URL:** Backend source currently designates `https://api.admiino.com` as production. The source also marks `https://admiino-backend.onrender.com` as retired. The live cutover was not independently verified; both are protected from development/staging, and the production allowlist remains empty pending owner verification.
+- **API base URL:** `https://api.admiino.com` is the verified canonical production API origin. `https://admiino-backend.onrender.com` is retired and rejected by the mobile validator.
 - **WebSocket URL:** Derived from an explicitly approved production API origin (`wss` required).
 - **App display name:** `Admiino Mobile`.
 - **App slug:** `admiino-mobile` (shared across profiles).
@@ -53,14 +53,14 @@ This matrix defines the app-side environment names and the backend hosts observe
 - **EAS variable environment:** `production`.
 - **Permitted data classification:** Approved production data only, under production access and privacy controls.
 - **Configuration owner:** Backend owner for the live production origin; product/app owner for identifiers; EAS account owner for production variables and release authorization.
-- **Verification status:** Production source configuration is documented, but live cutover is unverified. No production host is approved in the mobile validator and no production build or request was made.
+- **Verification status:** The production health endpoint has been checked read-only, and the project owner confirmed successful real sign-in through Expo Go. P10 automated tests use mocks and do not send authentication or state-changing requests to production.
 
 ## Enforcement and setup
 
 - `EXPO_PUBLIC_APP_ENV` is required and must be `development`, `staging`, or `production`. `NODE_ENV` is not used to select the app environment.
 - `EXPO_PUBLIC_API_BASE_URL` is an origin only: no path, query, fragment, username, or password. Staging/production require HTTPS and a host allowlist entry. Development HTTP is restricted to loopback.
 - Known production candidates and hostnames with `prod`/`production` labels are rejected in development and staging. No environment silently falls back to production.
-- The staging and production host allowlists remain empty until their owners verify and approve them. Unit-test fixtures use only reserved `.test` domains.
+- Staging has no approved API host. Production accepts only `api.admiino.com`; unit-test fixtures use reserved `.test` domains.
 - `EXPO_PUBLIC_API_REQUIRED=true` makes a development configuration fail when no API URL is set. Staging and production always require a URL.
 - Create `.env.local` from `.env.example` for local development. Do not create `.env.staging`; Expo SDK 58 does not load custom `.env` mode names. EAS environment variables are used for remote preview/production builds.
 - The `eas.json` profiles bind `development` → EAS `development`, `preview` → EAS `preview` (app environment `staging`), and `production` → EAS `production`. Only non-secret environment labels are checked into that file.

@@ -12,6 +12,7 @@ jest.mock('expo-secure-store', () => require('./mocks/expo-secure-store'), {
   virtual: true,
 });
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
+jest.mock('lucide-react-native', () => require('./mocks/lucide-react-native'));
 jest.mock(
   'react-native-safe-area-context',
   () => require('react-native-safe-area-context/jest/mock').default,

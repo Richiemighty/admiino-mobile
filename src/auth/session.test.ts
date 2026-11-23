@@ -73,6 +73,24 @@ describe('P07 session foundation', () => {
     expect(storage.setActiveWorkspaceId).toHaveBeenCalledWith('w1');
   });
 
+  it('does not send a stale selected workspace header when listing memberships', async () => {
+    const storage = createStorage();
+    jest.mocked(storage.getActiveWorkspaceId).mockResolvedValue('removed-workspace');
+    let requestHeaders: Headers | undefined;
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      requestHeaders = new Headers(init?.headers);
+      return new Response(JSON.stringify({ status: 'success', data: { workspaces: [] } }), {
+        status: 200,
+      });
+    };
+    const client = new ApiClient('https://api.admiino.com/api/v1', fetchImpl);
+
+    await new SessionService(storage, client).getWorkspaces('access-token');
+
+    expect(requestHeaders?.get('Authorization')).toBe('Bearer access-token');
+    expect(requestHeaders?.has('x-company-id')).toBe(false);
+  });
+
   it('clears an expired or invalid session without starting a refresh loop', async () => {
     const storage = createStorage();
     jest.mocked(storage.getAccessToken).mockResolvedValue('expired-token');

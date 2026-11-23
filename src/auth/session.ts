@@ -83,11 +83,21 @@ export class SessionService {
   async getWorkspaces(token?: string) {
     const accessToken = token ?? (await this.storage.getAccessToken());
     if (!accessToken) throw new ApiError('No active session.', 401);
-    const workspaceId = await this.storage.getActiveWorkspaceId();
     return this.client.get<WorkspacesResponse>('/auth/workspaces', {
       token: accessToken,
-      workspaceId,
     });
+  }
+
+  async getSelectedWorkspaceId() {
+    return this.storage.getActiveWorkspaceId();
+  }
+
+  async setSelectedWorkspaceId(workspaceId: string) {
+    await this.storage.setActiveWorkspaceId(workspaceId);
+  }
+
+  async clearSelectedWorkspaceId() {
+    await this.storage.clearActiveWorkspaceId();
   }
 }
 
