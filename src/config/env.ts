@@ -2,6 +2,8 @@ export const APP_ENVIRONMENTS = ['development', 'staging', 'production'] as cons
 
 export type AppEnvironmentName = (typeof APP_ENVIRONMENTS)[number];
 
+export const PRODUCTION_API_HOST = 'api.admiino.com';
+
 export interface EnvironmentInput {
   appEnv?: string;
   apiBaseUrl?: string;
@@ -29,13 +31,13 @@ export class EnvironmentConfigError extends Error {
 
 export const PROTECTED_PRODUCTION_API_HOSTS = [
   'admiino-backend.onrender.com',
-  'api.admiino.com',
+  PRODUCTION_API_HOST,
 ] as const;
 
 const APPROVED_API_HOSTS: Record<AppEnvironmentName, readonly string[]> = {
   development: [],
   staging: [],
-  production: [],
+  production: [PRODUCTION_API_HOST],
 };
 
 function isAppEnvironment(value: string): value is AppEnvironmentName {
@@ -191,7 +193,11 @@ export function validateEnvironment(
     if (apiUrl.protocol !== 'https:') {
       throw new EnvironmentConfigError(`${appEnv} API URLs must use HTTPS.`);
     }
-    if (!isApprovedHost(apiUrl, options.approvedApiHosts?.[appEnv] ?? APPROVED_API_HOSTS[appEnv])) {
+    const approvedHosts =
+      appEnv === 'production'
+        ? APPROVED_API_HOSTS.production
+        : (options.approvedApiHosts?.[appEnv] ?? APPROVED_API_HOSTS[appEnv]);
+    if (!isApprovedHost(apiUrl, approvedHosts)) {
       throw new EnvironmentConfigError(
         `The ${appEnv} API host is not allowlisted; host verification and approval are required.`,
       );

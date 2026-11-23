@@ -17,6 +17,17 @@ test('accepts a local development API origin', () => {
   );
 });
 
+test('rejects private LAN HTTP origins in development', () => {
+  assert.throws(
+    () =>
+      validateEnvironment({
+        appEnv: 'development',
+        apiBaseUrl: 'http://192.168.0.56:5001',
+      }),
+    /limited to localhost and loopback/,
+  );
+});
+
 test('allows the setup screen to run in explicit development mode without a backend', () => {
   assert.deepEqual(validateEnvironment({ appEnv: 'development' }), {
     appEnv: 'development',
@@ -35,13 +46,10 @@ test('accepts a staging fixture only when its host is explicitly allowlisted', (
   );
 });
 
-test('accepts a production fixture only when its host is explicitly approved', () => {
+test('accepts only the verified production API host', () => {
   assert.equal(
-    validateEnvironment(
-      { appEnv: 'production', apiBaseUrl: 'https://api.production.example.test' },
-      { approvedApiHosts: { production: ['api.production.example.test'] } },
-    ).apiBaseUrl,
-    'https://api.production.example.test',
+    validateEnvironment({ appEnv: 'production', apiBaseUrl: 'https://api.admiino.com' }).apiBaseUrl,
+    'https://api.admiino.com',
   );
 });
 
@@ -106,15 +114,40 @@ test('keeps the source-identified staging candidate blocked until approved', () 
   );
 });
 
-test('keeps the production candidate blocked until cutover is verified', () => {
+test('rejects the retired production host even when an override is supplied', () => {
+  assert.throws(
+    () =>
+      validateEnvironment(
+        {
+          appEnv: 'production',
+          apiBaseUrl: 'https://admiino-backend.onrender.com',
+        },
+        {
+          approvedApiHosts: { production: ['admiino-backend.onrender.com'] },
+        },
+      ),
+    /host is not allowlisted/,
+  );
+});
+
+test('rejects HTTP for the verified production host', () => {
   assert.throws(
     () =>
       validateEnvironment({
         appEnv: 'production',
-        apiBaseUrl: 'https://api.admiino.com',
+        apiBaseUrl: 'http://api.admiino.com',
       }),
-    /host is not allowlisted/,
+    /production API URLs must use HTTPS/,
   );
+});
+
+test('rejects local and private LAN API hosts in production', () => {
+  for (const apiBaseUrl of ['http://127.0.0.1:5001', 'https://192.168.0.56:5001']) {
+    assert.throws(
+      () => validateEnvironment({ appEnv: 'production', apiBaseUrl }),
+      /production API URLs must use HTTPS|host is not allowlisted/,
+    );
+  }
 });
 
 test('rejects insecure staging API URLs', () => {
