@@ -93,3 +93,56 @@ export interface CreateWorkspaceResponse {
   message: string;
   data: { company: { id: string; name: string; companyCode: string } };
 }
+
+export interface PersonalTaskSummary {
+  relation: 'all' | 'assigned' | 'created';
+  totalTasks: number;
+  pendingTasks: number;
+  inProgressTasks: number;
+  inReviewTasks: number;
+  delayedTasks: number;
+  completedTasks: number;
+  cancelledTasks: number;
+  openTasks: number;
+  overdueTasks: number;
+  urgentTasks: number;
+  completionRate: number;
+}
+
+export interface PersonalTaskSummaryResponse {
+  status: 'success';
+  data: { summary: PersonalTaskSummary };
+}
+
+export interface PersonalTaskItem {
+  id: string;
+  title: string;
+  status: string | null;
+  priority: string | null;
+  deadline?: string | null;
+}
+
+export interface PersonalTaskListResponse {
+  status: 'success';
+  results: number;
+  total: number;
+  data: { tasks: PersonalTaskItem[] };
+}
+
+export interface GlobalSearchResult {
+  id: string;
+  title: string;
+  subtitle: string;
+}
+
+export interface GlobalSearchResponse {
+  status: 'success';
+  data: {
+    groups: {
+      tasks?: GlobalSearchResult[];
+      projects?: GlobalSearchResult[];
+      people?: GlobalSearchResult[];
+      [key: string]: GlobalSearchResult[] | undefined;
+    };
+  };
+}

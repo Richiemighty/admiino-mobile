@@ -7,3 +7,4 @@ export { IconButton, type IconButtonProps } from './IconButton';
 export { InlineError, type InlineErrorProps } from './InlineError';
 export { LoadingState, type LoadingStateProps } from './LoadingState';
 export { Logo, type LogoProps, type LogoVariant } from './Logo';
+export { UserAvatar } from './UserAvatar';
