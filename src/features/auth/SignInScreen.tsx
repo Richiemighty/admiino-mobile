@@ -17,6 +17,7 @@ export function SignInScreen() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [verificationRequired, setVerificationRequired] = useState(false);
   const submitting = useRef(false);
   const { login } = useAuth();
 
@@ -29,6 +30,7 @@ export function SignInScreen() {
     setEmailError(nextEmailError);
     setPasswordError(nextPasswordError);
     setStatus(null);
+    setVerificationRequired(false);
     if (nextEmailError || nextPasswordError) return;
 
     submitting.current = true;
@@ -37,6 +39,7 @@ export function SignInScreen() {
       await login({ email: normalizedEmail, password, accountType: 'workspace' });
       setLoading(false);
       submitting.current = false;
+      setVerificationRequired(false);
       router.replace('/authenticated');
     } catch (error) {
       setLoading(false);
@@ -47,6 +50,7 @@ export function SignInScreen() {
         setStatus(error.message);
       } else if (error instanceof Error) {
         setStatus(error.message);
+        setVerificationRequired(error.message === 'Please verify your email before logging in.');
       } else {
         setStatus('Sign-in could not be completed. Please try again.');
       }
@@ -81,6 +85,7 @@ export function SignInScreen() {
         onChangeText={(value) => {
           setEmail(value);
           if (emailError) setEmailError(validateEmail(value));
+          setVerificationRequired(false);
         }}
         placeholder="you@company.com"
         returnKeyType="next"
@@ -93,6 +98,7 @@ export function SignInScreen() {
         onChangeText={(value) => {
           setPassword(value);
           if (passwordError) setPasswordError(value ? null : 'Password is required.');
+          setVerificationRequired(false);
         }}
         placeholder="Enter your password"
         returnKeyType="done"
@@ -109,6 +115,15 @@ export function SignInScreen() {
         Forgot password?
       </AppButton>
       {status && <InlineError message={status} />}
+      {verificationRequired && (
+        <AppButton
+          accessibilityLabel="Resend verification email"
+          onPress={() => router.push('/verify-email')}
+          variant="outline"
+        >
+          Resend verification email
+        </AppButton>
+      )}
       <AppButton
         accessibilityLabel="Sign in"
         disabled={loading}

@@ -1,17 +1,19 @@
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 
+import { apiClient, ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { AppButton, AppInput, AppText, InlineError } from '../../components/ui';
 import { AuthScreen } from './AuthScreen';
 import { validateEmail } from './validation';
 
-type RecoveryStatus = 'idle' | 'submitting' | 'ui-only';
+type RecoveryStatus = 'idle' | 'submitting' | 'sent';
+type RecoveryError = 'rate-limit' | 'network' | 'server';
 
 export function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
   const [status, setStatus] = useState<RecoveryStatus>('idle');
-  const [networkError, setNetworkError] = useState(false);
+  const [requestError, setRequestError] = useState<RecoveryError | null>(null);
   const submitting = useRef(false);
 
   const submit = async () => {
@@ -20,14 +22,23 @@ export function ForgotPasswordScreen() {
     const error = validateEmail(normalizedEmail);
     setEmail(normalizedEmail);
     setEmailError(error);
-    setNetworkError(false);
+    setRequestError(null);
     if (error) return;
 
     submitting.current = true;
     setStatus('submitting');
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    setStatus('ui-only');
-    submitting.current = false;
+    try {
+      await apiClient.post('/auth/forgot-password', { email: normalizedEmail });
+      setStatus('sent');
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 429) setRequestError('rate-limit');
+      else if (error instanceof ApiNetworkError || error instanceof ApiTimeoutError)
+        setRequestError('network');
+      else setRequestError('server');
+      setStatus('idle');
+    } finally {
+      submitting.current = false;
+    }
   };
 
   return (
@@ -55,23 +66,29 @@ export function ForgotPasswordScreen() {
         onChangeText={(value) => {
           setEmail(value);
           if (emailError) setEmailError(validateEmail(value));
-          setNetworkError(false);
-          if (status === 'ui-only') setStatus('idle');
+          setRequestError(null);
+          if (status === 'sent') setStatus('idle');
         }}
         placeholder="you@company.com"
         returnKeyType="done"
         textContentType="emailAddress"
         value={email}
       />
-      {networkError && (
+      {requestError && (
         <InlineError
-          message="We could not complete the preview request. Please try again."
+          message={
+            requestError === 'rate-limit'
+              ? 'Too many attempts. Please wait a moment before trying again.'
+              : requestError === 'network'
+                ? 'We could not reach Admiino. Check your connection and try again.'
+                : 'We could not send the recovery request. Please try again.'
+          }
           onRetry={() => void submit()}
         />
       )}
-      {status === 'ui-only' && (
+      {status === 'sent' && (
         <AppText accessibilityRole="alert" tone="info">
-          Password reset delivery is awaiting backend integration. No reset email was sent.
+          If that email is registered, you will receive password reset instructions shortly.
         </AppText>
       )}
       <AppButton

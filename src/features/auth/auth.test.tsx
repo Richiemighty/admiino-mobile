@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
+import { useAuth } from '../../auth/AuthProvider';
 import { renderWithProviders } from '../../test/render';
 import { AccountChoiceScreen } from '../onboarding/AccountChoiceScreen';
 import { CreateAccountScreen } from './CreateAccountScreen';
@@ -13,19 +14,18 @@ jest.mock('expo-web-browser', () => ({
   openBrowserAsync: jest.fn(async () => ({ type: 'opened' })),
 }));
 
-jest.mock('../../auth/AuthProvider', () => ({
-  useAuth: () => ({
-    login: jest.fn(async () => {
-      throw new Error('Live sign-in is awaiting backend integration.');
-    }),
-  }),
-}));
+jest.mock('../../auth/AuthProvider', () => ({ useAuth: jest.fn() }));
 
 describe('P06B authentication UI', () => {
   beforeEach(() => {
     jest.mocked(router.push).mockClear();
     jest.mocked(router.replace).mockClear();
     jest.mocked(router.back).mockClear();
+    jest.mocked(useAuth).mockReturnValue({
+      login: jest.fn(async () => {
+        throw new Error('Live sign-in is awaiting backend integration.');
+      }),
+    } as never);
   });
 
   it('opens Sign In and Create Account from Account Choice', async () => {
@@ -71,6 +71,24 @@ describe('P06B authentication UI', () => {
     );
   });
 
+  it('offers email verification after the backend confirms an unverified account', async () => {
+    jest.mocked(useAuth).mockReturnValue({
+      login: jest.fn(async () => {
+        throw new Error('Please verify your email before logging in.');
+      }),
+    } as never);
+    await renderWithProviders(<SignInScreen />);
+    await fireEvent.changeText(screen.getByLabelText('Email address'), 'user@example.com');
+    await fireEvent.changeText(screen.getByLabelText('Password'), 'test-password');
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Please verify your email before logging in.')).toBeTruthy(),
+    );
+    await fireEvent.press(screen.getByRole('button', { name: 'Resend verification email' }));
+    expect(router.push).toHaveBeenCalledWith('/verify-email');
+  });
+
   it('navigates between Sign In and Forgot Password', async () => {
     await renderWithProviders(<SignInScreen />);
     await fireEvent.press(screen.getByRole('button', { name: 'Forgot password' }));
@@ -93,7 +111,10 @@ describe('P06B authentication UI', () => {
     await fireEvent.changeText(screen.getByLabelText('Email address'), 'user@example.com');
     await fireEvent.press(screen.getByRole('button', { name: 'Send reset link' }));
     expect(global.fetch).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByText(/No reset email was sent/i)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText(/We could not send the recovery request/)).toBeTruthy(),
+    );
+    expect(screen.queryByText(/If that email is registered/)).toBeNull();
   });
 
   it('provides UI-only create-account browser hand-off navigation', async () => {

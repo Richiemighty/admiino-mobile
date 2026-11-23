@@ -96,7 +96,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (loginError instanceof ApiError && loginError.status === 401) {
         await sessionService.logout();
         setStatus('signed-out');
-        throw new Error(loginError.payload?.message || 'Email or password is incorrect.');
+        const verificationRequired =
+          loginError.payload?.message === 'Please verify your email before logging in.';
+        throw new Error(
+          verificationRequired
+            ? 'Please verify your email before logging in.'
+            : 'Email or password is incorrect.',
+        );
       }
       if (loginError instanceof ApiError && loginError.status === 423) {
         setStatus('suspended');

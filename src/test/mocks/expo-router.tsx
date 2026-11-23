@@ -15,7 +15,7 @@ export const router = {
   replace: jest.fn(),
 };
 export const useRouter = () => router;
-export const useLocalSearchParams = () => ({});
+export const useLocalSearchParams = jest.fn(() => ({}));
 export const useGlobalSearchParams = () => ({});
 export const usePathname = () => '/';
 export const useSegments = () => [];
