@@ -21,6 +21,7 @@ const project: ProjectRecord = {
   status: 'active',
   visibility: 'workspace',
   teamId: null,
+  logoUrl: 'https://images.admiino.test/project-launch.png',
 };
 
 function authPermissions(values: Record<string, boolean> = {}): EffectiveWorkspacePermissions {
@@ -123,6 +124,7 @@ describe('Project list screen', () => {
   it('filters by supported status and gates creation on workspace governance', async () => {
     const screen = await renderWithProviders(<ProjectListScreen />);
     expect(await screen.findByLabelText('Create project')).toBeTruthy();
+    expect(await screen.findByLabelText('Launch project logo')).toBeTruthy();
 
     fireEvent.press(screen.getByLabelText('Filter projects, Active'));
     fireEvent.press(await screen.findByLabelText('Filter status: Completed'));

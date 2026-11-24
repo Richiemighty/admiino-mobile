@@ -1,11 +1,11 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { type PropsWithChildren, useEffect, useState } from 'react';
 
 import { useAuth } from '../../auth/AuthProvider';
 import { AppButton, AppScreen, AppText, InlineError, LoadingState } from '../../components/ui';
 import { themeTokens } from '../../theme/tokens';
 
-export function AuthenticatedRoute() {
+export function AuthenticatedRoute({ children }: PropsWithChildren) {
   const { status, workspaces, activeWorkspace, workspacePermissionStatus, logout } = useAuth();
   const [signOutError, setSignOutError] = useState<string | null>(null);
 
@@ -46,11 +46,13 @@ export function AuthenticatedRoute() {
   }
 
   if (status === 'authenticated') {
-    return (
-      <AppScreen>
-        <LoadingState label="Opening your workspace" variant="fullScreen" />
-      </AppScreen>
-    );
+    if (!activeWorkspace || workspacePermissionStatus !== 'ready')
+      return (
+        <AppScreen>
+          <LoadingState label="Opening your workspace" variant="fullScreen" />
+        </AppScreen>
+      );
+    return children;
   }
 
   const signOut = async () => {

@@ -20,6 +20,8 @@ const project = {
   startDate: '2026-06-01T00:00:00.000Z',
   endDate: null,
   dueDate: '2026-07-01T00:00:00.000Z',
+  logoUrl: 'https://images.admiino.test/project-launch.png',
+  color: '#6724DB',
 };
 
 const storage: SecureSessionStorage = {

@@ -97,6 +97,45 @@ function FilterChip({
   );
 }
 
+function StatusBadge({ status }: { status: TaskStatus | null }) {
+  const { colors } = useAppTheme();
+  const tone = status ? themeTokens.taskStatusTone[status] : 'neutral';
+  return (
+    <View
+      style={{
+        flexShrink: 0,
+        borderRadius: themeTokens.radius.pill,
+        backgroundColor: colors.semantic[tone].background,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+      }}
+    >
+      <AppText tone={tone === 'neutral' ? 'secondary' : tone} variant="caption">
+        {labelFor(status)}
+      </AppText>
+    </View>
+  );
+}
+
+function PriorityBadge({ priority }: { priority: TaskPriority | null }) {
+  const { colors } = useAppTheme();
+  const tone = themeTokens.taskPriorityTone[priority ?? 'medium'];
+  return (
+    <View
+      style={{
+        borderRadius: themeTokens.radius.pill,
+        backgroundColor: colors.semantic[tone].background,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+      }}
+    >
+      <AppText tone={tone === 'neutral' ? 'secondary' : tone} variant="caption">
+        {labelFor(priority)} priority
+      </AppText>
+    </View>
+  );
+}
+
 function TaskCard({
   task,
   onActions,
@@ -156,7 +195,7 @@ function TaskCard({
     [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || 'Assignee';
 
   return (
-    <View style={{ height: 118, overflow: 'hidden', borderRadius: themeTokens.radius.md }}>
+    <View style={{ minHeight: 112, overflow: 'hidden', borderRadius: themeTokens.radius.md }}>
       <View
         style={{
           position: 'absolute',
@@ -228,64 +267,68 @@ function TaskCard({
           onLongPress={() => onActions(task)}
           onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
           padding="sm"
-          style={{ height: 118, gap: themeTokens.spacing.xxs, borderWidth: 0 }}
+          style={{
+            gap: themeTokens.spacing.xxs,
+            borderWidth: 0,
+            paddingVertical: themeTokens.spacing.sm,
+          }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
-            <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
-              <AppText numberOfLines={2} variant="label">
-                {task.title}
-              </AppText>
-              <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.xs }}
-              >
-                <AppText numberOfLines={1} tone="secondary" variant="caption">
-                  {labelFor(task.status)}
-                </AppText>
-                <AppText tone="subtle" variant="caption">
-                  ·
-                </AppText>
-                <AppText numberOfLines={1} tone="secondary" variant="caption">
-                  {labelFor(task.priority)}
-                </AppText>
-              </View>
-            </View>
+          <View
+            style={{ flexDirection: 'row', alignItems: 'flex-start', gap: themeTokens.spacing.sm }}
+          >
+            <AppText numberOfLines={2} style={{ flex: 1 }} variant="label">
+              {task.title}
+            </AppText>
+            <StatusBadge status={task.status} />
           </View>
-          {dueLabel && (
-            <AppText
-              accessibilityLabel={`Due ${dueLabel}`}
-              tone={dueLabel === 'Overdue' ? 'danger' : 'secondary'}
-              variant="caption"
-            >
-              {dueLabel}
-            </AppText>
-          )}
-          {assignees.length > 0 ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {assignees.slice(0, 3).map((person, index) => (
-                <View key={person.id} style={{ marginLeft: index === 0 ? 0 : -7 }}>
-                  <UserAvatar
-                    imageUrl={person.profilePictureUrl}
-                    name={assigneeName(person)}
-                    size={28}
-                  />
-                </View>
-              ))}
-              {assignees.length > 3 ? (
-                <AppText tone="secondary" variant="caption" style={{ marginLeft: 6 }}>
-                  +{assignees.length - 3}
-                </AppText>
-              ) : null}
-            </View>
-          ) : (
-            <AppText tone="secondary" variant="caption">
-              Unassigned
-            </AppText>
-          )}
-          {related ? (
-            <AppText numberOfLines={1} tone="subtle" variant="caption">
-              {related}
-            </AppText>
-          ) : null}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: themeTokens.spacing.xs,
+              flexWrap: 'wrap',
+            }}
+          >
+            <PriorityBadge priority={task.priority} />
+            {dueLabel ? (
+              <AppText
+                accessibilityLabel={`Due ${dueLabel}`}
+                tone={dueLabel === 'Overdue' ? 'danger' : 'secondary'}
+                variant="caption"
+              >
+                {dueLabel}
+              </AppText>
+            ) : null}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
+            {assignees.length > 0 ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {assignees.slice(0, 3).map((person, index) => (
+                  <View key={person.id} style={{ marginLeft: index === 0 ? 0 : -7 }}>
+                    <UserAvatar
+                      imageUrl={person.profilePictureUrl}
+                      name={assigneeName(person)}
+                      size={28}
+                    />
+                  </View>
+                ))}
+                {assignees.length > 3 ? (
+                  <AppText tone="secondary" variant="caption" style={{ marginLeft: 6 }}>
+                    +{assignees.length - 3}
+                  </AppText>
+                ) : null}
+              </View>
+            ) : (
+              <AppText tone="secondary" variant="caption">
+                Unassigned
+              </AppText>
+            )}
+            {related ? (
+              <AppText numberOfLines={1} style={{ flex: 1 }} tone="subtle" variant="caption">
+                {related}
+              </AppText>
+            ) : null}
+          </View>
         </AppCard>
       </Animated.View>
     </View>

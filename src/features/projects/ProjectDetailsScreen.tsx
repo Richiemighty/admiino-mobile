@@ -9,7 +9,7 @@ import {
   Plus,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
@@ -464,7 +464,16 @@ export function ProjectDetailsScreen({
                         : colors.primaryAction,
                   }}
                 >
-                  <FolderKanban color="#FFFFFF" size={20} />
+                  {project.logoUrl?.startsWith('https://') ? (
+                    <Image
+                      accessibilityLabel={`${project.name} logo`}
+                      resizeMode="cover"
+                      source={{ uri: project.logoUrl }}
+                      style={{ width: 40, height: 40, borderRadius: themeTokens.radius.sm }}
+                    />
+                  ) : (
+                    <FolderKanban color="#FFFFFF" size={20} />
+                  )}
                 </View>
                 <AppText accessibilityRole="header" variant="label">
                   Project overview

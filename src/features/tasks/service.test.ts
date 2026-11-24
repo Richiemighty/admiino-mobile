@@ -48,6 +48,48 @@ function serviceFor(
 }
 
 describe('P12 task API contracts', () => {
+  it('replaces assignees and clears them using the verified PATCH contract', async () => {
+    const requests: { url: URL; init: RequestInit }[] = [];
+    const service = serviceFor((_url, init) => {
+      const body = JSON.parse(String(init.body ?? '{}')) as Record<string, unknown>;
+      if (body.clearAssignees === true) {
+        return {
+          status: 'success',
+          data: {
+            task: {
+              ...task,
+              assignee: null,
+              assigneeId: null,
+              assignees: [],
+            },
+          },
+        };
+      }
+      return {
+        status: 'success',
+        data: {
+          task: {
+            ...task,
+            assignee: { id: 'user-2', firstName: 'Taylor', lastName: 'Teammate' },
+            assignees: [{ id: 'user-2', firstName: 'Taylor', lastName: 'Teammate' }],
+          },
+        },
+      };
+    }, requests);
+
+    await expect(
+      service.updateTask(taskId, workspaceId, { assigneeIds: ['user-2', 'user-2'] }, access),
+    ).resolves.toMatchObject({
+      assignees: [{ id: 'user-2' }],
+    });
+    expect(JSON.parse(String(requests[0]?.init.body))).toEqual({ assigneeIds: ['user-2'] });
+
+    await expect(
+      service.updateTask(taskId, workspaceId, { assigneeIds: [] }, access),
+    ).resolves.toMatchObject({ assignees: [] });
+    expect(JSON.parse(String(requests[1]?.init.body))).toEqual({ clearAssignees: true });
+  });
+
   it('uses server-side My Tasks relation, filters, pagination, and workspace headers', async () => {
     const requests: { url: URL; init: RequestInit }[] = [];
     const service = serviceFor(

@@ -502,7 +502,12 @@ describe('P12 task lists, detail, and forms', () => {
   });
 
   it('prefills edit fields and saves through the authorised task update endpoint', async () => {
-    jest.mocked(useAuth).mockReturnValue(authState(alpha, { role: 'manager' }));
+    jest.mocked(useAuth).mockReturnValue(
+      authState(alpha, {
+        role: 'manager',
+        permissions: { assign_workspace_members: true, view_workspace_members: true },
+      }),
+    );
     await renderWithProviders(<TaskFormScreen mode="edit" taskId={task.id} />);
     expect(await screen.findByDisplayValue(task.title)).toBeTruthy();
     await fireEvent.changeText(screen.getByLabelText('Task title'), 'Updated title');
@@ -519,12 +524,41 @@ describe('P12 task lists, detail, and forms', () => {
     expect(router.replace).toHaveBeenCalledWith(`/tasks/${task.id}`);
   });
 
-  it('blocks member field editing even when broad task access allows status changes', async () => {
-    jest.mocked(useAuth).mockReturnValue(authState(alpha, { role: 'member' }));
+  it('prefills and replaces task assignees through the verified update payload', async () => {
+    jest.mocked(useAuth).mockReturnValue(
+      authState(alpha, {
+        role: 'manager',
+        permissions: { assign_workspace_members: true, view_workspace_members: true },
+      }),
+    );
     await renderWithProviders(<TaskFormScreen mode="edit" taskId={task.id} />);
-    expect(await screen.findByText(/cannot be edited with your current task access/)).toBeTruthy();
-    expect(taskService.updateTask).not.toHaveBeenCalled();
-    expect(screen.queryByLabelText('Task title')).toBeNull();
+    expect(await screen.findByLabelText('Assignees')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('Assignees'));
+    expect(await screen.findByLabelText('Select Taylor Teammate')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Select Taylor Teammate'));
+    await fireEvent.press(screen.getByLabelText('Finish selecting assignees'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Save task changes' }));
+
+    await waitFor(() =>
+      expect(taskService.updateTask).toHaveBeenCalledWith(
+        task.id,
+        'workspace-1',
+        expect.objectContaining({ assigneeIds: ['user-1', 'user-2'] }),
+        editableAccess,
+      ),
+    );
+  });
+
+  it('allows task-access-authorised member field editing while reassignment stays permission-gated', async () => {
+    jest
+      .mocked(useAuth)
+      .mockReturnValue(
+        authState(alpha, { role: 'member', permissions: { assign_workspace_members: false } }),
+      );
+    await renderWithProviders(<TaskFormScreen mode="edit" taskId={task.id} />);
+    expect(await screen.findByDisplayValue(task.title)).toBeTruthy();
+    expect(screen.queryByLabelText('Assignees')).toBeNull();
   });
 
   it('confirms discarding dirty edit values', async () => {

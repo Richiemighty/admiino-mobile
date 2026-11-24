@@ -1,13 +1,18 @@
 import type { Href } from 'expo-router';
 import {
+  Activity,
   Building2,
   CalendarDays,
   ChevronDown,
+  Crown,
+  Folder,
   FolderKanban,
   Home,
+  LayoutTemplate,
   ListTodo,
   LogOut,
   Settings,
+  Users,
   X,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -295,6 +300,47 @@ export function NavigationDrawer({
                       </Pressable>
                     );
                   })}
+                  {[
+                    { label: 'Portfolio', Icon: Activity, comingSoon: true },
+                    { label: 'Templates', Icon: LayoutTemplate, comingSoon: true },
+                    { label: 'Team Directory', Icon: Users, comingSoon: true },
+                    { label: 'Hire Talent', Icon: Crown, comingSoon: true },
+                    { label: 'Harmony', Icon: Users, comingSoon: true },
+                    { label: 'Drive', Icon: Folder, comingSoon: true },
+                  ].map(({ label, Icon, comingSoon }) => (
+                    <Pressable
+                      accessibilityLabel={`${label}${comingSoon ? ', Coming soon' : ''}`}
+                      accessibilityRole="button"
+                      onPress={() =>
+                        Alert.alert(
+                          label,
+                          comingSoon
+                            ? `${label} is not yet available in the mobile app.`
+                            : 'This feature is unavailable.',
+                        )
+                      }
+                      key={label}
+                      style={{
+                        minHeight: themeTokens.touchTarget.minimum,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: themeTokens.spacing.md,
+                        borderRadius: themeTokens.radius.md,
+                        paddingHorizontal: themeTokens.spacing.md,
+                        opacity: comingSoon ? 0.72 : 1,
+                      }}
+                    >
+                      <Icon color={colors.textMuted} size={20} />
+                      <AppText style={{ flex: 1 }} variant="label">
+                        {label}
+                      </AppText>
+                      {comingSoon ? (
+                        <AppText tone="secondary" variant="caption">
+                          Coming soon
+                        </AppText>
+                      ) : null}
+                    </Pressable>
+                  ))}
                 </View>
               </ScrollView>
 

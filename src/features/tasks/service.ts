@@ -132,6 +132,8 @@ export interface UpdateTaskInput {
   priority?: TaskPriority;
   deadline?: string | null;
   status?: TaskStatus;
+  assigneeIds?: string[];
+  clearAssignees?: boolean;
 }
 
 export interface TaskMemberOption {
@@ -606,9 +608,17 @@ export class TaskService {
     }
     if (!taskId || !workspaceId) throw new ApiError('The task is unavailable.', 400);
     const token = await this.sessions.getAccessToken();
+    const body: UpdateTaskInput = {
+      ...input,
+      ...(input.assigneeIds ? { assigneeIds: [...new Set(input.assigneeIds)] } : {}),
+    };
+    if (input.assigneeIds && input.assigneeIds.length === 0) {
+      body.clearAssignees = true;
+      delete body.assigneeIds;
+    }
     const response: unknown = await this.client.request(`/tasks/${encodeURIComponent(taskId)}`, {
       method: 'PATCH',
-      body: input,
+      body,
       token,
       workspaceId,
       signal,

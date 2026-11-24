@@ -451,8 +451,6 @@ function TaskFormScreenContent({
   const createPermission = projectContext ? 'create_project_tasks' : 'create_tasks';
   const canCreate =
     mode === 'create' && roleCanCreate && permissions?.permissions[createPermission] === true;
-  const canEditTaskFields =
-    mode === 'edit' && role !== 'member' && workspacePermissionStatus === 'ready';
   const isReady =
     status === 'authenticated' &&
     workspacePermissionStatus === 'ready' &&
@@ -469,6 +467,11 @@ function TaskFormScreenContent({
   });
   const [task, setTask] = useState<TaskRecord | null>(null);
   const [taskAccess, setTaskAccess] = useState<TaskAccess | null>(null);
+  const canEditTaskFields =
+    mode === 'edit' &&
+    taskAccess?.canEdit === true &&
+    taskAccess.readOnly === false &&
+    workspacePermissionStatus === 'ready';
   const [taskLoading, setTaskLoading] = useState(mode === 'edit');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -480,8 +483,7 @@ function TaskFormScreenContent({
   const [optionsRetry, setOptionsRetry] = useState(0);
   const [optionsLoadedKey, setOptionsLoadedKey] = useState('');
   const optionsKey = `${workspaceId ?? ''}|${optionsRetry}`;
-  const optionsLoading =
-    mode === 'create' && isReady && Boolean(workspaceId) && optionsLoadedKey !== optionsKey;
+  const optionsLoading = isReady && Boolean(workspaceId) && optionsLoadedKey !== optionsKey;
   const [submitting, setSubmitting] = useState(false);
   const [discardConfirmed, setDiscardConfirmed] = useState(false);
   const submittingRef = useRef(false);
@@ -528,7 +530,7 @@ function TaskFormScreenContent({
           if (controller.signal.aborted) return;
           setTask(response.task);
           setTaskAccess(response.access);
-          if (!response.access.canEdit || response.access.readOnly || role === 'member') {
+          if (!response.access.canEdit || response.access.readOnly) {
             setLoadError('Task fields cannot be edited with your current task access.');
             return;
           }
@@ -555,11 +557,11 @@ function TaskFormScreenContent({
           if (!controller.signal.aborted) setTaskLoading(false);
         });
       return () => controller.abort();
-    }, [isReady, logout, mode, role, taskId, workspaceId]),
+    }, [isReady, logout, mode, taskId, workspaceId]),
   );
 
   useEffect(() => {
-    if (mode !== 'create' || !isReady || !workspaceId) return;
+    if (!isReady || !workspaceId) return;
     const controller = new AbortController();
     const requests: Promise<void>[] = [
       taskService
@@ -707,6 +709,9 @@ function TaskFormScreenContent({
           description: form.description.trim(),
           priority: form.priority,
           deadline,
+          ...(form.assigneeIds.length
+            ? { assigneeIds: form.assigneeIds }
+            : { clearAssignees: true }),
         };
         const updated = await taskService.updateTask(taskId, workspaceId, input, taskAccess);
         setTask(updated);
@@ -891,7 +896,11 @@ function TaskFormScreenContent({
             value={form.deadline}
           />
 
-          {mode === 'create' && (
+          {(mode === 'create' ||
+            (mode === 'edit' &&
+              canAssignOthers &&
+              taskAccess?.canEdit &&
+              !taskAccess.readOnly)) && (
             <>
               <ChoiceField
                 disabled={projectContext}

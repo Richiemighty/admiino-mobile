@@ -75,7 +75,7 @@ export function MainAppHeader({ onProfilePress }: { onProfilePress?: () => void 
                 : 'Open Inbox'
             }
             icon={<Bell color={colors.text} size={21} />}
-            onPress={() => router.push('/(tabs)/inbox')}
+            onPress={() => router.push('/inbox')}
           />
           {unreadCount && unreadCount > 0 ? (
             <View

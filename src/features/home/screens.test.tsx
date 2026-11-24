@@ -171,6 +171,15 @@ describe('P11 Home, Global Search, and More screens', () => {
     await waitFor(() => expect(router.push).toHaveBeenCalledWith('/settings'));
   });
 
+  it('opens Inbox from the fixed-header notification bell', async () => {
+    await renderWithProviders(<HomeScreen />);
+    await screen.findByText('Hello, Ada');
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Open Inbox' }));
+
+    expect(router.push).toHaveBeenCalledWith('/inbox');
+  });
+
   it('opens the quick workspace switcher from the profile drawer', async () => {
     jest.mocked(useAuth).mockReturnValue(authState(alpha));
     const view = await renderWithProviders(<HomeScreen />);

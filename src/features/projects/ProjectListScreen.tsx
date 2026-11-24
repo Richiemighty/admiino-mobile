@@ -9,7 +9,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
+import { FlatList, Image, Pressable, RefreshControl, TextInput, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
@@ -91,7 +91,16 @@ function ProjectCard({ project }: { project: ProjectRecord }) {
             backgroundColor: projectColor,
           }}
         >
-          <FolderKanban color="#FFFFFF" size={20} />
+          {project.logoUrl?.startsWith('https://') ? (
+            <Image
+              accessibilityLabel={`${project.name} logo`}
+              resizeMode="cover"
+              source={{ uri: project.logoUrl }}
+              style={{ width: 40, height: 40, borderRadius: themeTokens.radius.sm }}
+            />
+          ) : (
+            <FolderKanban color="#FFFFFF" size={20} />
+          )}
         </View>
         <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
           <AppText numberOfLines={2} variant="label">
