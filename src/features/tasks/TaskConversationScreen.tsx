@@ -46,6 +46,7 @@ import {
   saveConversationDraft,
   type TaskConversationDraft,
 } from './conversationDraft';
+import { deleteTemporaryConversationFiles } from './conversationDraftFiles';
 import { type TaskComment, taskConversationService } from './conversationService';
 import { MAX_COMMENT_FILES, validateTaskFile } from './fileContracts';
 import { type TaskDetails, type TaskPerson, taskService } from './service';
@@ -155,17 +156,6 @@ async function latestComments(taskId: string, workspaceId: string, signal?: Abor
     );
   }
   return page;
-}
-
-function deleteTemporaryFiles(files: PickedConversationFile[]) {
-  for (const item of files) {
-    try {
-      const file = new File(item.uri);
-      if (file.exists) file.delete();
-    } catch {
-      console.warn('Unable to remove a temporary conversation attachment.');
-    }
-  }
 }
 
 function localUploadFile(item: PickedConversationFile) {
@@ -522,7 +512,7 @@ export function TaskConversationScreen({
   useEffect(() => {
     if (previousConversationWorkspaceId && previousConversationWorkspaceId !== workspaceId) {
       const staleDrafts = clearWorkspaceConversationDrafts(previousConversationWorkspaceId);
-      staleDrafts.forEach((value) => deleteTemporaryFiles(value.files));
+      staleDrafts.forEach((value) => deleteTemporaryConversationFiles(value.files));
     }
     previousConversationWorkspaceId = workspaceId;
   }, [workspaceId]);
@@ -564,7 +554,7 @@ export function TaskConversationScreen({
     loadedRef.current = null;
     if (draftKey) {
       const removed = clearConversationDraft(draftKey);
-      if (removed) deleteTemporaryFiles(removed.files);
+      if (removed) deleteTemporaryConversationFiles(removed.files);
     }
     draftRef.current = { ...EMPTY_DRAFT };
     setDraftState({ key: draftKey, value: { ...EMPTY_DRAFT } });
@@ -612,7 +602,7 @@ export function TaskConversationScreen({
         });
         if (draftKey) {
           const saved = clearConversationDraft(draftKey);
-          if (saved) deleteTemporaryFiles(saved.files);
+          if (saved) deleteTemporaryConversationFiles(saved.files);
         }
         setDraftValue({ ...EMPTY_DRAFT });
         return;
@@ -840,7 +830,7 @@ export function TaskConversationScreen({
         });
         if (draftKey) {
           const saved = clearConversationDraft(draftKey);
-          if (saved) deleteTemporaryFiles(saved.files);
+          if (saved) deleteTemporaryConversationFiles(saved.files);
         }
         setDraftValue({ ...EMPTY_DRAFT });
         setSendError(null);
@@ -967,7 +957,7 @@ export function TaskConversationScreen({
         return { uri: asset.uri, name: asset.name, mimeType, size };
       });
       if (contextRef.current !== selectionContext) {
-        deleteTemporaryFiles(selected);
+        deleteTemporaryConversationFiles(selected);
         return;
       }
       const existingUris = new Set(draftRef.current.files.map((file) => file.uri));
@@ -988,7 +978,7 @@ export function TaskConversationScreen({
       ...draftRef.current,
       files: draftRef.current.files.filter((file) => file.uri !== uri),
     });
-    if (removed) deleteTemporaryFiles([removed]);
+    if (removed) deleteTemporaryConversationFiles([removed]);
   };
 
   const chooseReply = (comment: TaskComment) => {

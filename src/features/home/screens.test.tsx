@@ -158,6 +158,19 @@ describe('P11 Home, Global Search, and More screens', () => {
     await waitFor(() => expect(router.push).toHaveBeenCalledWith('/(tabs)/tasks'));
   });
 
+  it('opens My Profile and Settings from the navigation drawer', async () => {
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByText('Hello, Ada')).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Open profile and navigation menu' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Open My Profile' }));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/profile'));
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Open profile and navigation menu' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Open Settings' }));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/settings'));
+  });
+
   it('switches workspaces and signs out from the profile drawer', async () => {
     const logout = jest.fn(async () => undefined);
     jest.mocked(useAuth).mockReturnValue(authState(alpha, logout));
@@ -176,6 +189,15 @@ describe('P11 Home, Global Search, and More screens', () => {
       expect(router.replace).toHaveBeenCalledWith('/sign-in');
     });
     view.unmount();
+  });
+
+  it('opens My Profile and Settings from More', async () => {
+    await renderWithProviders(<MoreScreen />);
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Open My Profile' }));
+    expect(router.push).toHaveBeenCalledWith('/profile');
+    await fireEvent.press(screen.getByRole('button', { name: 'Open Settings' }));
+    expect(router.push).toHaveBeenCalledWith('/settings');
   });
 
   it('shows only permitted Home quick-access actions and routes them correctly', async () => {

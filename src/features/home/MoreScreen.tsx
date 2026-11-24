@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ArrowRightLeft, LogOut } from 'lucide-react-native';
+import { ArrowRightLeft, LogOut, Settings } from 'lucide-react-native';
 import { useState } from 'react';
 import { Alert, View } from 'react-native';
 
@@ -55,11 +55,15 @@ export function MoreScreen() {
 
         <View style={{ gap: themeTokens.spacing.sm }}>
           <AppText variant="label">Account</AppText>
-          <AppCard padding="md">
+          <AppCard
+            accessibilityLabel="Open My Profile"
+            onPress={() => router.push('/profile')}
+            padding="md"
+          >
             <View
               style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.md }}
             >
-              <UserAvatar name={name} size={56} />
+              <UserAvatar imageUrl={user?.profilePictureUrl} name={name} size={56} />
               <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
                 <AppText variant="heading">{name}</AppText>
                 {user?.email && <AppText tone="secondary">{user.email}</AppText>}
@@ -84,6 +88,18 @@ export function MoreScreen() {
               Switch workspace
             </AppButton>
           </AppCard>
+        </View>
+
+        <View style={{ gap: themeTokens.spacing.sm }}>
+          <AppText variant="label">Settings</AppText>
+          <AppButton
+            accessibilityLabel="Open Settings"
+            icon={<Settings color={colors.primaryAction} size={18} />}
+            onPress={() => router.push('/settings')}
+            variant="outline"
+          >
+            Settings
+          </AppButton>
         </View>
 
         {error && <InlineError message={error} />}

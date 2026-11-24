@@ -74,10 +74,10 @@ export class SessionService {
     await this.storage.clearSession();
   }
 
-  async getMe(token?: string) {
+  async getMe(token?: string, signal?: AbortSignal) {
     const accessToken = token ?? (await this.getAccessToken());
     if (!accessToken) throw new ApiError('No active session.', 401);
-    return this.client.get<MeResponse>('/auth/me', { token: accessToken });
+    return this.client.get<MeResponse>('/auth/me', { token: accessToken, signal });
   }
 
   async getWorkspaces(token?: string) {

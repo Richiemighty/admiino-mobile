@@ -19,6 +19,8 @@ export interface MobileUser {
   role?: string;
   isVerified?: boolean;
   isActive?: boolean;
+  bio?: string | null;
+  profilePictureUrl?: string | null;
   [key: string]: unknown;
 }
 

@@ -68,6 +68,14 @@ export default function appConfig(): ExpoConfig {
       'expo-sharing',
       'expo-secure-store',
       [
+        'expo-image-picker',
+        {
+          photosPermission: 'Allow Admiino to choose a profile photo.',
+          cameraPermission: false,
+          microphonePermission: false,
+        },
+      ],
+      [
         'expo-splash-screen',
         {
           backgroundColor: '#FFFFFF',

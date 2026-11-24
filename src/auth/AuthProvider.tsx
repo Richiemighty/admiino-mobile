@@ -1,6 +1,7 @@
 import {
   createContext,
   type PropsWithChildren,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -14,6 +15,8 @@ import type {
   MobileUser,
   MobileWorkspace,
 } from '../api/types';
+import { clearConversationDrafts } from '../features/tasks/conversationDraft';
+import { deleteTemporaryConversationFiles } from '../features/tasks/conversationDraftFiles';
 import { workspaceService } from '../workspace/service';
 import { sessionService } from './session';
 
@@ -36,6 +39,11 @@ interface AuthContextValue {
   restore: () => Promise<void>;
   login: (request: LoginRequest) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: (signal?: AbortSignal) => Promise<MobileUser>;
+  applyUserProfileUpdate: (
+    userId: string,
+    updates: Partial<Pick<MobileUser, 'firstName' | 'lastName' | 'bio' | 'profilePictureUrl'>>,
+  ) => void;
   selectWorkspace: (workspaceId: string) => Promise<boolean>;
   refreshWorkspaces: (preferredWorkspaceId?: string) => Promise<boolean>;
   clearError: () => void;
@@ -77,7 +85,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [error, setError] = useState<string | null>(null);
   const workspaceRequest = useRef(0);
 
-  const clearWorkspaceState = () => {
+  const clearWorkspaceState = useCallback(() => {
     workspaceRequest.current += 1;
     setWorkspaces([]);
     setActiveWorkspace(null);
@@ -85,7 +93,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setPermissions(null);
     setWorkspacePermissionStatus('idle');
     setWorkspaceError(null);
-  };
+  }, []);
 
   const activateWorkspace = async (workspace: MobileWorkspace, token: string): Promise<boolean> => {
     const requestId = ++workspaceRequest.current;
@@ -340,13 +348,41 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
+    clearConversationDrafts().forEach((draft) => deleteTemporaryConversationFiles(draft.files));
     await sessionService.logout();
     clearWorkspaceState();
     setUser(null);
     setError(null);
     setStatus('signed-out');
-  };
+  }, [clearWorkspaceState]);
+
+  const refreshUser = useCallback(
+    async (signal?: AbortSignal): Promise<MobileUser> => {
+      if (!user?.id) throw new ApiError('No active account.', 401);
+      const userId = user.id;
+      const token = await sessionService.getAccessToken();
+      const response = await sessionService.getMe(token, signal);
+      if (signal?.aborted) return response.data.user;
+      const activeToken = await sessionService.getAccessToken();
+      if (activeToken !== token || response.data.user.id !== userId) {
+        throw new ApiError('The signed-in account changed. Please try again.', 401);
+      }
+      setUser((current) => (current?.id === userId ? response.data.user : current));
+      return response.data.user;
+    },
+    [user],
+  );
+
+  const applyUserProfileUpdate = useCallback(
+    (
+      userId: string,
+      updates: Partial<Pick<MobileUser, 'firstName' | 'lastName' | 'bio' | 'profilePictureUrl'>>,
+    ) => {
+      setUser((current) => (current?.id === userId ? { ...current, ...updates } : current));
+    },
+    [],
+  );
 
   const value: AuthContextValue = {
     status,
@@ -361,6 +397,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     restore,
     login,
     logout,
+    refreshUser,
+    applyUserProfileUpdate,
     selectWorkspace,
     refreshWorkspaces,
     clearError: () => setError(null),

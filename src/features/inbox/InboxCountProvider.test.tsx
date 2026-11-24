@@ -40,6 +40,8 @@ function setAuthenticated(workspaceId: string) {
     restore: async () => undefined,
     login: async () => undefined,
     logout: async () => undefined,
+    refreshUser: async () => ({ id: 'user-1', email: 'user@example.test' }),
+    applyUserProfileUpdate: () => undefined,
     selectWorkspace: async () => true,
     refreshWorkspaces: async () => true,
     clearError: () => undefined,

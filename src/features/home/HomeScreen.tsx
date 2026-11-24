@@ -256,7 +256,7 @@ export function HomeScreen() {
                 onPress={() => setDrawerVisible(true)}
                 style={{ minWidth: 48, minHeight: 48, justifyContent: 'center' }}
               >
-                <UserAvatar name={displayName} size={40} />
+                <UserAvatar imageUrl={user?.profilePictureUrl} name={displayName} size={40} />
               </Pressable>
               <AppText
                 accessibilityRole="header"

@@ -50,6 +50,8 @@ function setAuthenticated() {
     status: 'authenticated',
     workspacePermissionStatus: 'ready',
     logout: async () => undefined,
+    refreshUser: async () => ({ id: 'user-1', email: 'user@example.test' }),
+    applyUserProfileUpdate: () => undefined,
     restore: async () => undefined,
     login: async () => undefined,
     selectWorkspace: async () => true,

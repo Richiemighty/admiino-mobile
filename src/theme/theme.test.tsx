@@ -1,23 +1,32 @@
-import { describe, expect, it } from '@jest/globals';
-import { fireEvent, screen } from '@testing-library/react-native';
+import { beforeEach, describe, expect, it } from '@jest/globals';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { act, render, screen, waitFor } from '@testing-library/react-native';
+import { useEffect } from 'react';
 
 import { AppText } from '../components/ui';
 import { renderWithProviders } from '../test/render';
-import { ThemeProvider, useAppTheme } from './ThemeProvider';
+import { type ThemeMode, ThemeProvider, useAppTheme } from './ThemeProvider';
 import { type AppThemeColors, taskPriorityTone, taskStatusTone, themeTokens } from './tokens';
 
 function ThemeModeProbe() {
-  const { mode, resolvedMode, setMode, colors } = useAppTheme();
+  const { mode, resolvedMode, colors } = useAppTheme();
   return (
     <>
       <AppText testID="theme-mode">
         {mode}:{resolvedMode}:{colors.background}
       </AppText>
-      <AppText testID="change-theme" onPress={() => setMode('dark')}>
-        Change theme
-      </AppText>
     </>
   );
+}
+
+function ThemeSetterProbe({
+  onReady,
+}: {
+  onReady: (setMode: (mode: ThemeMode) => Promise<void>) => void;
+}) {
+  const { setMode } = useAppTheme();
+  useEffect(() => onReady(setMode), [onReady, setMode]);
+  return <ThemeModeProbe />;
 }
 
 function luminance(hex: string): number {
@@ -39,16 +48,17 @@ function expectReadable(foreground: string, background: string) {
 }
 
 describe('theme tokens and provider', () => {
-  it('supports system mode and changing the resolved theme', async () => {
+  beforeEach(async () => {
+    await AsyncStorage.clear();
+  });
+
+  it('supports system mode and resolves it to a supported appearance', async () => {
     await renderWithProviders(
       <ThemeProvider initialMode="system">
         <ThemeModeProbe />
       </ThemeProvider>,
     );
     expect(screen.getByTestId('theme-mode')).toHaveTextContent(/system:/);
-
-    await fireEvent.press(screen.getByTestId('change-theme'));
-    expect(screen.getByTestId('theme-mode')).toHaveTextContent(/dark:dark:/);
   });
 
   it('supports explicit light and dark settings', async () => {
@@ -59,6 +69,31 @@ describe('theme tokens and provider', () => {
     );
 
     expect(screen.getByTestId('theme-mode')).toHaveTextContent(/dark:dark:/);
+  });
+
+  it('persists a selected theme and restores it on the next provider mount', async () => {
+    let setModeForTest: ((mode: ThemeMode) => Promise<void>) | undefined;
+    const onReady = (setMode: (mode: ThemeMode) => Promise<void>) => {
+      setModeForTest = setMode;
+    };
+    const firstView = await render(
+      <ThemeProvider initialMode="system">
+        <ThemeSetterProbe onReady={onReady} />
+      </ThemeProvider>,
+    );
+    await act(async () => {
+      await setModeForTest?.('dark');
+    });
+    expect(await AsyncStorage.getItem('admiino.mobile.theme-mode')).toBe('dark');
+    expect(screen.getByTestId('theme-mode')).toHaveTextContent(/^dark:dark:/);
+
+    firstView.unmount();
+    await render(
+      <ThemeProvider>
+        <ThemeModeProbe />
+      </ThemeProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('theme-mode')).toHaveTextContent(/^dark:dark:/));
   });
 
   it('uses one status and priority tone map including in_review', () => {

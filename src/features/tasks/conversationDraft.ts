@@ -59,3 +59,14 @@ export function clearWorkspaceConversationDrafts(workspaceId: string): TaskConve
   }
   return cleared;
 }
+
+export function clearConversationDrafts(): TaskConversationDraft[] {
+  const cleared = [...drafts.values()];
+  drafts.clear();
+  return cleared.map((draft) => ({
+    ...draft,
+    mentionedUserIds: [...draft.mentionedUserIds],
+    mentionLabels: { ...draft.mentionLabels },
+    files: [...draft.files],
+  }));
+}

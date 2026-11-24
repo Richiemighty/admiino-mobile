@@ -7,6 +7,7 @@ import {
   Inbox,
   ListTodo,
   LogOut,
+  Settings,
   X,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -187,21 +188,38 @@ export function NavigationDrawer({
           <View style={{ flex: 1 }}>
             <View
               style={{
+                minHeight: 60,
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: themeTokens.spacing.md,
+                gap: themeTokens.spacing.sm,
                 paddingBottom: themeTokens.spacing.lg,
               }}
             >
-              <UserAvatar name={fullName} size={56} />
-              <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
-                <AppText numberOfLines={1} variant="label">
-                  {fullName}
+              <Pressable
+                accessibilityLabel="Open My Profile"
+                accessibilityRole="button"
+                onPress={() => close(() => onNavigate('/profile'))}
+                style={{
+                  flex: 1,
+                  minHeight: 56,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: themeTokens.spacing.md,
+                }}
+              >
+                <UserAvatar imageUrl={user?.profilePictureUrl} name={fullName} size={56} />
+                <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
+                  <AppText numberOfLines={1} variant="label">
+                    {fullName}
+                  </AppText>
+                  <AppText numberOfLines={1} tone="secondary" variant="caption">
+                    {user?.email ?? ''}
+                  </AppText>
+                </View>
+                <AppText tone="link" variant="caption">
+                  Profile
                 </AppText>
-                <AppText numberOfLines={1} tone="secondary" variant="caption">
-                  {user?.email ?? ''}
-                </AppText>
-              </View>
+              </Pressable>
               <IconButton
                 accessibilityLabel="Close navigation menu"
                 icon={<X color={colors.textMuted} size={20} />}
@@ -277,6 +295,21 @@ export function NavigationDrawer({
             </ScrollView>
 
             <View style={{ paddingTop: themeTokens.spacing.md }}>
+              <Pressable
+                accessibilityLabel="Open Settings"
+                accessibilityRole="button"
+                onPress={() => close(() => onNavigate('/settings'))}
+                style={{
+                  minHeight: themeTokens.touchTarget.minimum,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: themeTokens.spacing.md,
+                  paddingHorizontal: themeTokens.spacing.md,
+                }}
+              >
+                <Settings color={colors.textMuted} size={20} />
+                <AppText variant="label">Settings</AppText>
+              </Pressable>
               <AppButton
                 accessibilityLabel="Sign out"
                 icon={<LogOut color={colors.textMuted} size={18} />}
