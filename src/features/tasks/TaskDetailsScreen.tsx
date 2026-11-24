@@ -191,7 +191,13 @@ function StatusOption({
   );
 }
 
-export function TaskDetailsScreen({ taskId }: { taskId: string }) {
+export function TaskDetailsScreen({
+  taskId,
+  returnProjectId,
+}: {
+  taskId: string;
+  returnProjectId?: string;
+}) {
   const { activeWorkspace, permissions, status, workspacePermissionStatus, logout } = useAuth();
   const { colors } = useAppTheme();
   const workspaceId = activeWorkspace?.companyId ?? null;
@@ -223,6 +229,14 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
     status === 'authenticated' &&
     workspacePermissionStatus === 'ready' &&
     Boolean(activeWorkspace && workspaceId);
+  const backToContext = () => {
+    if (returnProjectId) {
+      if (router.canGoBack()) router.back();
+      else router.replace(`/projects/${encodeURIComponent(returnProjectId)}?tab=tasks`);
+    } else {
+      router.replace('/(tabs)/tasks');
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -363,9 +377,9 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
       <AppScreen scrollable>
         <View style={{ gap: themeTokens.spacing.md }}>
           <IconButton
-            accessibilityLabel="Back to Tasks"
+            accessibilityLabel={returnProjectId ? 'Back to project' : 'Back to Tasks'}
             icon={<ArrowLeft color={colors.text} size={22} />}
-            onPress={() => router.replace('/(tabs)/tasks')}
+            onPress={backToContext}
           />
           {loadError ? (
             <InlineError
@@ -418,6 +432,13 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
   const dependencies = currentDependencies
     ? [...currentDependencies.dependsOn, ...currentDependencies.blocking]
     : [];
+  const editRoute = {
+    pathname: '/task-edit/[id]' as const,
+    params: {
+      id: task.id,
+      ...(returnProjectId ? { projectId: returnProjectId, fromProject: '1' } : {}),
+    },
+  };
 
   return (
     <AppScreen padding="md" scrollable>
@@ -426,9 +447,9 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
           <IconButton
-            accessibilityLabel="Back to Tasks"
+            accessibilityLabel={returnProjectId ? 'Back to project' : 'Back to Tasks'}
             icon={<ArrowLeft color={colors.text} size={22} />}
-            onPress={() => router.replace('/(tabs)/tasks')}
+            onPress={backToContext}
           />
           <AppText
             accessibilityRole="header"
@@ -441,7 +462,7 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
           {canEditFields && (
             <AppButton
               accessibilityLabel="Edit task"
-              onPress={() => router.push(`/task-edit/${encodeURIComponent(task.id)}`)}
+              onPress={() => router.push(editRoute)}
               variant="outline"
             >
               Edit

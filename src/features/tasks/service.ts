@@ -41,18 +41,22 @@ export interface TaskRecord {
   assignee?: TaskPerson | null;
   assignees?: TaskPerson[] | null;
   subtasks?: { id: string; title: string; status: TaskStatus | string }[] | null;
-  attachments?: {
-    id?: string;
-    fileName?: string;
-    fileType?: string;
-    name?: string;
-  }[] | null;
-  activities?: {
-    id: string;
-    actionType: string;
-    createdAt: string;
-    actor?: TaskPerson | null;
-  }[] | null;
+  attachments?:
+    | {
+        id?: string;
+        fileName?: string;
+        fileType?: string;
+        name?: string;
+      }[]
+    | null;
+  activities?:
+    | {
+        id: string;
+        actionType: string;
+        createdAt: string;
+        actor?: TaskPerson | null;
+      }[]
+    | null;
 }
 
 export interface TaskAccess {
@@ -155,7 +159,9 @@ function isTaskPerson(value: unknown): value is TaskPerson {
     (value.firstName === undefined ||
       value.firstName === null ||
       typeof value.firstName === 'string') &&
-    (value.lastName === undefined || value.lastName === null || typeof value.lastName === 'string') &&
+    (value.lastName === undefined ||
+      value.lastName === null ||
+      typeof value.lastName === 'string') &&
     (value.email === undefined || value.email === null || typeof value.email === 'string')
   );
 }
@@ -211,7 +217,11 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     }
   }
   if (value.team !== undefined && value.team !== null) {
-    if (!isRecord(value.team) || typeof value.team.id !== 'string' || typeof value.team.name !== 'string')
+    if (
+      !isRecord(value.team) ||
+      typeof value.team.id !== 'string' ||
+      typeof value.team.name !== 'string'
+    )
       return false;
   }
   if (
@@ -332,10 +342,11 @@ export class TaskService {
     if (filters.status) params.set('status', filters.status);
     if (filters.priority) params.set('priority', filters.priority);
 
-    const response: unknown = await this.client.get(
-      `/tasks?${params.toString()}`,
-      { token, workspaceId, signal },
-    );
+    const response: unknown = await this.client.get(`/tasks?${params.toString()}`, {
+      token,
+      workspaceId,
+      signal,
+    });
     requireSuccess(response, 'The task list response was invalid.');
     const data = requireDataRecord(response.data, 'The task list response was invalid.');
     if (
@@ -354,11 +365,7 @@ export class TaskService {
     };
   }
 
-  async getTask(
-    taskId: string,
-    workspaceId: string,
-    signal?: AbortSignal,
-  ): Promise<TaskDetails> {
+  async getTask(taskId: string, workspaceId: string, signal?: AbortSignal): Promise<TaskDetails> {
     if (!taskId || !workspaceId) throw new ApiError('The task is unavailable.', 400);
     const token = await this.sessions.getAccessToken();
     const response: unknown = await this.client.get(`/tasks/${encodeURIComponent(taskId)}`, {
@@ -437,9 +444,7 @@ export class TaskService {
       ...(input.description?.trim() ? { description: input.description.trim() } : {}),
       priority: input.priority,
       ...(input.deadline ? { deadline: input.deadline } : {}),
-      ...(assigneeIds.length
-        ? { assigneeId: assigneeIds[0], assigneeIds }
-        : {}),
+      ...(assigneeIds.length ? { assigneeId: assigneeIds[0], assigneeIds } : {}),
       ...(input.projectId ? { projectId: input.projectId } : {}),
       ...(input.teamId ? { teamId: input.teamId } : {}),
     };
@@ -466,10 +471,13 @@ export class TaskService {
     }
     if (!taskId || !workspaceId) throw new ApiError('The task is unavailable.', 400);
     const token = await this.sessions.getAccessToken();
-    const response: unknown = await this.client.request(
-      `/tasks/${encodeURIComponent(taskId)}`,
-      { method: 'PATCH', body: input, token, workspaceId, signal },
-    );
+    const response: unknown = await this.client.request(`/tasks/${encodeURIComponent(taskId)}`, {
+      method: 'PATCH',
+      body: input,
+      token,
+      workspaceId,
+      signal,
+    });
     requireSuccess(response, 'The task update response was invalid.');
     const data = requireDataRecord(response.data, 'The task update response was invalid.');
     const task = requireWorkspaceTask(data.task, workspaceId, taskId);
@@ -489,7 +497,11 @@ export class TaskService {
 
   async getMembers(workspaceId: string, signal?: AbortSignal): Promise<TaskMemberOption[]> {
     const token = await this.sessions.getAccessToken();
-    const response: unknown = await this.client.get('/team/members', { token, workspaceId, signal });
+    const response: unknown = await this.client.get('/team/members', {
+      token,
+      workspaceId,
+      signal,
+    });
     requireSuccess(response, 'The workspace member response was invalid.');
     const data = requireDataRecord(response.data, 'The workspace member response was invalid.');
     if (
@@ -588,10 +600,11 @@ export class TaskService {
     signal?: AbortSignal,
   ): Promise<string | null> {
     const token = await this.sessions.getAccessToken();
-    const response: unknown = await this.client.get(
-      `/team/teams/${encodeURIComponent(teamId)}`,
-      { token, workspaceId, signal },
-    );
+    const response: unknown = await this.client.get(`/team/teams/${encodeURIComponent(teamId)}`, {
+      token,
+      workspaceId,
+      signal,
+    });
     requireSuccess(response, 'The team response was invalid.');
     const data = requireDataRecord(response.data, 'The team response was invalid.');
     const team = requireDataRecord(data.team, 'The team response was invalid.');

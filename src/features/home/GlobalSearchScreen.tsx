@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { ArrowLeft, Check, CircleUserRound, FolderKanban, Search, X } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Keyboard, Pressable, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, TextInput, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
@@ -66,24 +66,14 @@ function searchErrorMessage(error: unknown): string {
   return 'Search is temporarily unavailable. Please try again.';
 }
 
-function openResult(group: SearchGroup, id: string, title: string) {
+function openResult(group: SearchGroup, id: string) {
   if (group === 'tasks') {
     router.push(`/tasks/${encodeURIComponent(id)}`);
     return;
   }
-  if (group === 'people') return;
-  const destination = 'Projects';
-  Alert.alert(
-    `${destination} details are not available yet`,
-    `“${title}” was found in the active workspace. Open the ${destination} tab for its current availability.`,
-    [
-      { text: 'Not now', style: 'cancel' },
-      {
-        text: `Open ${destination}`,
-        onPress: () => router.push('/(tabs)/projects'),
-      },
-    ],
-  );
+  if (group === 'projects') {
+    router.push(`/projects/${encodeURIComponent(id)}`);
+  }
 }
 
 function SearchResultRow({
@@ -146,7 +136,7 @@ function SearchResultRow({
     <Pressable
       accessibilityLabel={`${title}, ${group}`}
       accessibilityRole="button"
-      onPress={() => openResult(group, id, title)}
+      onPress={() => openResult(group, id)}
       style={({ pressed }) => ({
         minHeight: themeTokens.touchTarget.minimum,
         flexDirection: 'row',

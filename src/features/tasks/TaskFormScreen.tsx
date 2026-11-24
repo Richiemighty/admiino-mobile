@@ -47,6 +47,9 @@ interface TaskFormScreenProps {
   mode: FormMode;
   taskId?: string;
   projectId?: string;
+  teamId?: string;
+  returnToProject?: boolean;
+  returnProjectId?: string;
 }
 
 interface ChoiceOption {
@@ -398,29 +401,46 @@ function DatePickerField({
   );
 }
 
-export function TaskFormScreen({ mode, taskId, projectId }: TaskFormScreenProps) {
+export function TaskFormScreen({
+  mode,
+  taskId,
+  projectId,
+  teamId,
+  returnToProject = false,
+  returnProjectId,
+}: TaskFormScreenProps) {
   const { activeWorkspace } = useAuth();
   const workspaceId = activeWorkspace?.companyId ?? null;
   const previousWorkspaceId = useRef<string | null>(workspaceId);
 
   useEffect(() => {
     if (previousWorkspaceId.current && workspaceId && previousWorkspaceId.current !== workspaceId) {
-      router.replace('/(tabs)/tasks');
+      router.replace(returnProjectId || projectId ? '/(tabs)/projects' : '/(tabs)/tasks');
     }
     previousWorkspaceId.current = workspaceId;
-  }, [workspaceId]);
+  }, [projectId, returnProjectId, workspaceId]);
 
   return (
     <TaskFormScreenContent
-      key={workspaceId ?? 'no-workspace'}
+      key={`${workspaceId ?? 'no-workspace'}|${mode}|${taskId ?? ''}|${projectId ?? ''}|${teamId ?? ''}`}
       mode={mode}
       projectId={projectId}
+      teamId={teamId}
+      returnProjectId={returnProjectId}
+      returnToProject={returnToProject}
       taskId={taskId}
     />
   );
 }
 
-function TaskFormScreenContent({ mode, taskId, projectId }: TaskFormScreenProps) {
+function TaskFormScreenContent({
+  mode,
+  taskId,
+  projectId,
+  teamId,
+  returnToProject,
+  returnProjectId,
+}: TaskFormScreenProps) {
   const { activeWorkspace, permissions, status, user, workspacePermissionStatus, logout } =
     useAuth();
   const { colors } = useAppTheme();
@@ -440,10 +460,12 @@ function TaskFormScreenContent({ mode, taskId, projectId }: TaskFormScreenProps)
   const [form, setForm] = useState<TaskFormValues>({
     ...EMPTY_FORM,
     ...(projectId ? { projectId } : {}),
+    ...(teamId ? { teamId } : {}),
   });
   const [initialForm, setInitialForm] = useState<TaskFormValues>({
     ...EMPTY_FORM,
     ...(projectId ? { projectId } : {}),
+    ...(teamId ? { teamId } : {}),
   });
   const [task, setTask] = useState<TaskRecord | null>(null);
   const [taskAccess, setTaskAccess] = useState<TaskAccess | null>(null);
@@ -608,6 +630,7 @@ function TaskFormScreenContent({ mode, taskId, projectId }: TaskFormScreenProps)
   };
 
   const cancel = () => {
+    const targetProjectId = returnProjectId ?? projectId;
     if (formHasChanges) {
       Alert.alert('Discard changes?', 'Your task changes have not been saved.', [
         { text: 'Keep editing', style: 'cancel' },
@@ -618,12 +641,16 @@ function TaskFormScreenContent({ mode, taskId, projectId }: TaskFormScreenProps)
             setDiscardConfirmed(true);
             disablePreventRemove();
             if (router.canGoBack()) router.back();
-            else router.replace('/(tabs)/tasks');
+            else if (targetProjectId) {
+              router.replace(`/projects/${encodeURIComponent(targetProjectId)}?tab=tasks`);
+            } else router.replace('/(tabs)/tasks');
           },
         },
       ]);
     } else if (router.canGoBack()) {
       router.back();
+    } else if (targetProjectId) {
+      router.replace(`/projects/${encodeURIComponent(targetProjectId)}?tab=tasks`);
     } else {
       router.replace('/(tabs)/tasks');
     }
@@ -664,7 +691,13 @@ function TaskFormScreenContent({ mode, taskId, projectId }: TaskFormScreenProps)
         };
         const created = await taskService.createTask(workspaceId, input, projectContext);
         setDiscardConfirmed(true);
-        router.replace(`/tasks/${encodeURIComponent(created.id)}`);
+        if (projectContext && returnToProject && projectId) {
+          router.back();
+        } else if (projectContext && projectId) {
+          router.replace(`/projects/${encodeURIComponent(projectId)}?tab=tasks`);
+        } else {
+          router.replace(`/tasks/${encodeURIComponent(created.id)}`);
+        }
       } else {
         if (!taskId || !taskAccess || !canEditTaskFields) {
           throw new ApiError('You do not have permission to edit this task.', 403);
@@ -679,7 +712,10 @@ function TaskFormScreenContent({ mode, taskId, projectId }: TaskFormScreenProps)
         setTask(updated);
         setInitialForm(form);
         setDiscardConfirmed(true);
-        router.replace(`/tasks/${encodeURIComponent(updated.id)}`);
+        const projectParams = returnProjectId
+          ? `?projectId=${encodeURIComponent(returnProjectId)}&fromProject=1`
+          : '';
+        router.replace(`/tasks/${encodeURIComponent(updated.id)}${projectParams}`);
       }
     } catch (requestError) {
       if (requestError instanceof ApiError && requestError.status === 401) {
@@ -719,11 +755,17 @@ function TaskFormScreenContent({ mode, taskId, projectId }: TaskFormScreenProps)
             You do not have permission to create a task in this workspace.
           </AppText>
           <AppButton
-            accessibilityLabel="Back to Tasks"
-            onPress={() => router.replace('/(tabs)/tasks')}
+            accessibilityLabel={projectContext ? 'Back to project' : 'Back to Tasks'}
+            onPress={() => {
+              if (projectContext && projectId) {
+                router.replace(`/projects/${encodeURIComponent(projectId)}?tab=tasks`);
+              } else {
+                router.replace('/(tabs)/tasks');
+              }
+            }}
             variant="outline"
           >
-            Back to Tasks
+            {projectContext ? 'Back to project' : 'Back to Tasks'}
           </AppButton>
         </View>
       </AppScreen>
@@ -743,7 +785,13 @@ function TaskFormScreenContent({ mode, taskId, projectId }: TaskFormScreenProps)
           <IconButton
             accessibilityLabel="Back to task"
             icon={<ArrowLeft color={colors.text} size={22} />}
-            onPress={() => taskId && router.replace(`/tasks/${encodeURIComponent(taskId)}`)}
+            onPress={() => {
+              if (!taskId) return;
+              const projectParams = returnProjectId
+                ? `?projectId=${encodeURIComponent(returnProjectId)}&fromProject=1`
+                : '';
+              router.replace(`/tasks/${encodeURIComponent(taskId)}${projectParams}`);
+            }}
           />
           {loadError ? (
             <InlineError message={loadError} />

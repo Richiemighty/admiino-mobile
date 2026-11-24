@@ -60,16 +60,13 @@ describe('P12 task API contracts', () => {
     );
 
     await expect(
-      service.listTasks(
-        workspaceId,
-        {
-          relation: 'assigned',
-          page: 2,
-          query: '  launch  ',
-          status: 'pending',
-          priority: 'high',
-        },
-      ),
+      service.listTasks(workspaceId, {
+        relation: 'assigned',
+        page: 2,
+        query: '  launch  ',
+        status: 'pending',
+        priority: 'high',
+      }),
     ).resolves.toMatchObject({ page: 2, total: 26, tasks: [{ id: taskId }] });
 
     expect(requests[0]?.url.pathname).toBe('/api/v1/tasks');
@@ -179,11 +176,16 @@ describe('P12 task API contracts', () => {
     );
 
     await expect(
-      service.updateTask(taskId, workspaceId, { status: 'in_progress' }, {
-        canView: true,
-        canEdit: false,
-        readOnly: true,
-      }),
+      service.updateTask(
+        taskId,
+        workspaceId,
+        { status: 'in_progress' },
+        {
+          canView: true,
+          canEdit: false,
+          readOnly: true,
+        },
+      ),
     ).rejects.toMatchObject({ status: 403 });
     expect(requests).toHaveLength(0);
 
@@ -262,16 +264,13 @@ describe('P12 task API contracts', () => {
   });
 
   it('surfaces network failures instead of returning empty task data', async () => {
-    const client = new ApiClient(
-      'https://api.admiino.com/api/v1',
-      async () => {
-        throw new Error('offline');
-      },
-    );
+    const client = new ApiClient('https://api.admiino.com/api/v1', async () => {
+      throw new Error('offline');
+    });
     const service = new TaskService(client, new SessionService(storage));
 
-    await expect(service.listTasks(workspaceId, { relation: 'assigned', page: 1 })).rejects.toBeInstanceOf(
-      ApiNetworkError,
-    );
+    await expect(
+      service.listTasks(workspaceId, { relation: 'assigned', page: 1 }),
+    ).rejects.toBeInstanceOf(ApiNetworkError);
   });
 });
