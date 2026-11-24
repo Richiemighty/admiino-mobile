@@ -100,21 +100,25 @@ function FilterChip({
 function TaskCard({
   task,
   onActions,
+  watching,
   open,
   onOpen,
   onClose,
+  onWatch,
 }: {
   task: TaskListItem;
   onActions: (task: TaskListItem) => void;
+  watching: boolean;
   open: boolean;
   onOpen: (taskId: string) => void;
   onClose: (taskId: string) => void;
+  onWatch: (task: TaskListItem) => void;
 }) {
   const { colors } = useAppTheme();
-  const translateX = useMemo(() => new Animated.Value(open ? -168 : 0), [open]);
+  const translateX = useMemo(() => new Animated.Value(open ? -252 : 0), [open]);
   useEffect(() => {
     Animated.spring(translateX, {
-      toValue: open ? -168 : 0,
+      toValue: open ? -252 : 0,
       damping: 22,
       stiffness: 260,
       useNativeDriver: true,
@@ -126,15 +130,15 @@ function TaskCard({
         onMoveShouldSetPanResponder: (_event, gesture) =>
           Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
         onPanResponderMove: (_event, gesture) => {
-          const base = open ? -168 : 0;
-          translateX.setValue(Math.max(-168, Math.min(0, base + gesture.dx)));
+          const base = open ? -252 : 0;
+          translateX.setValue(Math.max(-252, Math.min(0, base + gesture.dx)));
         },
         onPanResponderRelease: (_event, gesture) => {
           if (gesture.dx < -45) onOpen(task.id);
           else if (gesture.dx > 35) onClose(task.id);
           else {
             Animated.spring(translateX, {
-              toValue: open ? -168 : 0,
+              toValue: open ? -252 : 0,
               damping: 22,
               stiffness: 260,
               useNativeDriver: true,
@@ -159,7 +163,7 @@ function TaskCard({
           right: 0,
           top: 0,
           bottom: 0,
-          width: 168,
+          width: 252,
           flexDirection: 'row',
           backgroundColor: colors.primaryAction,
         }}
@@ -190,6 +194,18 @@ function TaskCard({
           >
             <AppText tone="inverse" variant="caption">
               Edit
+            </AppText>
+          </Pressable>
+        ) : null}
+        {task.access?.canView ? (
+          <Pressable
+            accessibilityLabel={`${watching ? 'Unwatch' : 'Watch'} ${task.title}`}
+            accessibilityRole="button"
+            onPress={() => onWatch(task)}
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <AppText tone="inverse" variant="caption">
+              {watching ? 'Unwatch' : 'Watch'}
             </AppText>
           </Pressable>
         ) : null}
@@ -724,11 +740,26 @@ function TasksScreenContent() {
           renderItem={({ item }) => (
             <TaskCard
               task={item}
+              watching={watchingTaskIds.has(item.id)}
               open={openTaskId === item.id}
               onClose={(taskId) =>
                 setOpenTaskId((current) => (current === taskId ? null : current))
               }
-              onOpen={(taskId) => setOpenTaskId(taskId)}
+              onOpen={(taskId) => {
+                setOpenTaskId(taskId);
+                if (!workspaceId) return;
+                void taskService
+                  .getWatchers(taskId, workspaceId)
+                  .then((watchers) => {
+                    setWatchingTaskIds((current) => {
+                      const next = new Set(current);
+                      if (watchers.some((watcher) => watcher.id === userId)) next.add(taskId);
+                      else next.delete(taskId);
+                      return next;
+                    });
+                  })
+                  .catch(() => undefined);
+              }}
               onActions={(selected) => {
                 setOpenTaskId(selected.id);
                 setActionTask(selected);
@@ -746,6 +777,32 @@ function TasksScreenContent() {
                     })
                     .catch(() => undefined);
                 }
+              }}
+              onWatch={(selected) => {
+                if (!workspaceId) return;
+                setWatchLoadingId(selected.id);
+                const isWatching = watchingTaskIds.has(selected.id);
+                void (async () => {
+                  try {
+                    if (isWatching) await taskService.unwatchTask(selected.id, workspaceId);
+                    else await taskService.watchTask(selected.id, workspaceId);
+                    setWatchingTaskIds((current) => {
+                      const next = new Set(current);
+                      if (isWatching) next.delete(selected.id);
+                      else next.add(selected.id);
+                      return next;
+                    });
+                    setOpenTaskId(null);
+                  } catch (watchError) {
+                    setError(
+                      watchError instanceof ApiError && watchError.status === 403
+                        ? 'You do not have permission to watch this task.'
+                        : 'The watch state could not be changed. Please try again.',
+                    );
+                  } finally {
+                    setWatchLoadingId(null);
+                  }
+                })();
               }}
             />
           )}
