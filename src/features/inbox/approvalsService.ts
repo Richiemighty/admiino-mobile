@@ -67,7 +67,7 @@ function parseRequester(value: unknown): ApprovalRequester | null {
   if (value === null || value === undefined) return null;
   if (
     !isRecord(value) ||
-    typeof value.id !== 'string' ||
+    (value.id !== undefined && value.id !== null && typeof value.id !== 'string') ||
     !optionalString(value.firstName) ||
     !optionalString(value.lastName) ||
     !optionalString(value.email)
@@ -75,7 +75,7 @@ function parseRequester(value: unknown): ApprovalRequester | null {
     throw new ApiError('The backend returned an invalid approval requester.', 502);
   }
   return {
-    id: value.id,
+    id: typeof value.id === 'string' ? value.id : '',
     firstName: value.firstName ?? null,
     lastName: value.lastName ?? null,
     email: value.email ?? null,

@@ -1,6 +1,7 @@
 import { router, Tabs, useFocusEffect } from 'expo-router';
 import { CalendarDays, Ellipsis, FolderKanban, Home, ListTodo } from 'lucide-react-native';
 import { useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 import { AppScreen, LoadingState } from '../../src/components/ui';
@@ -44,6 +45,7 @@ export default function MainTabsLayout() {
 
 function WorkspaceTabs() {
   const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -54,7 +56,7 @@ function WorkspaceTabs() {
         tabBarStyle: {
           minHeight: 60,
           paddingTop: 6,
-          paddingBottom: 6,
+          paddingBottom: 6 + insets.bottom,
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
         },

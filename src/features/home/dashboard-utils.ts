@@ -61,12 +61,14 @@ function byDeadlineThenPriority(now: Date) {
 export function getDueDateLabel(
   deadline: string | null | undefined,
   now = new Date(),
+  status?: string | null,
 ): string | null {
   const date = dateForDeadline(deadline);
   if (!date) return null;
 
   const offset = localDayNumber(date) - localDayNumber(now);
-  if (offset < 0) return 'Overdue';
+  if (offset < 0 && status !== 'completed' && status !== 'cancelled') return 'Overdue';
+  if (offset < 0) return null;
   if (offset === 0) return 'Today';
   if (offset === 1) return 'Tomorrow';
   return new Intl.DateTimeFormat(undefined, {

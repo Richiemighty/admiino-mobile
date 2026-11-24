@@ -79,7 +79,7 @@ function TaskRow({
   onPress: () => void;
 }) {
   const { colors } = useAppTheme();
-  const dueLabel = getDueDateLabel(task.deadline);
+  const dueLabel = getDueDateLabel(task.deadline, new Date(), task.status);
   const priority = displayPriority(task.priority);
 
   return (

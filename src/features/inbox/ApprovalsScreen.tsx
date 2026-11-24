@@ -37,6 +37,13 @@ interface LoadedQueue {
   totalPages: number;
 }
 
+const developmentRequestDiagnostics: {
+  category: ApprovalCategory;
+  operation: string;
+  status: number | null;
+  parsingFailure: boolean;
+}[] = [];
+
 const CATEGORY_LABELS: Record<ApprovalCategory, string> = {
   join: 'Join requests',
   verification: 'Member verifications',
@@ -247,6 +254,9 @@ function ApprovalQueue({
   const [page, setPage] = useState(1);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [categoryErrors, setCategoryErrors] = useState<Partial<Record<ApprovalCategory, string>>>(
+    {},
+  );
   const request = useRef<AbortController | null>(null);
   const submitting = useRef(false);
   const activeWorkspace = useRef<string | null>(workspaceId);
@@ -292,6 +302,7 @@ function ApprovalQueue({
       setRefreshing(isRefresh);
       setError(null);
       setNotice(null);
+      setCategoryErrors((current) => ({ ...current, [activeCategory]: undefined }));
       try {
         let nextItems: ApprovalItem[];
         let totalPages = 1;
@@ -340,7 +351,35 @@ function ApprovalQueue({
       } catch (requestError) {
         if (controller.signal.aborted || activeWorkspace.current !== workspaceId) return;
         const handled = await handleFatal(requestError);
-        if (!handled) setError(queueError(requestError));
+        if (!handled) {
+          const categoryLabel =
+            activeCategory === 'join'
+              ? 'Join requests'
+              : activeCategory === 'verification'
+                ? 'Member verifications'
+                : 'Permission requests';
+          setCategoryErrors((current) => ({
+            ...current,
+            [activeCategory]: `${categoryLabel} could not be loaded. Try again.`,
+          }));
+          setError(queueError(requestError));
+          if (__DEV__) {
+            const kept = developmentRequestDiagnostics.filter(
+              (entry) => entry.category !== activeCategory,
+            );
+            developmentRequestDiagnostics.splice(0, developmentRequestDiagnostics.length, ...kept, {
+              category: activeCategory,
+              operation:
+                activeCategory === 'join'
+                  ? 'GET companies/join/requests'
+                  : activeCategory === 'verification'
+                    ? 'GET team/pending-verifications'
+                    : 'GET access-requests',
+              status: requestError instanceof ApiError ? requestError.status : null,
+              parsingFailure: requestError instanceof ApiError && requestError.status === 502,
+            });
+          }
+        }
       } finally {
         if (!controller.signal.aborted && activeWorkspace.current === workspaceId) {
           setLoading(false);
@@ -664,9 +703,15 @@ function ApprovalQueue({
         ListEmptyComponent={
           loading ? (
             <LoadingState label={`Loading ${CATEGORY_LABELS[category].toLowerCase()}`} />
-          ) : error ? (
+          ) : categoryErrors[activeCategory] || error ? (
             <View style={{ gap: 10, paddingVertical: themeTokens.spacing.md }}>
-              <InlineError message={error} />
+              <InlineError
+                message={
+                  categoryErrors[activeCategory] ||
+                  error ||
+                  'Requests could not be loaded. Try again.'
+                }
+              />
               <AppButton
                 accessibilityLabel="Retry loading approval requests"
                 onPress={refresh}

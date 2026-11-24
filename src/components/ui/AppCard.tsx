@@ -1,5 +1,7 @@
 import type { PropsWithChildren } from 'react';
 import {
+  type AccessibilityActionEvent,
+  type AccessibilityActionInfo,
   Pressable,
   type PressableStateCallbackType,
   type StyleProp,
@@ -14,6 +16,9 @@ interface AppCardBaseProps extends PropsWithChildren {
   variant?: 'outlined' | 'elevated';
   padding?: SpacingToken;
   style?: StyleProp<ViewStyle>;
+  onLongPress?: () => void;
+  accessibilityActions?: AccessibilityActionInfo[];
+  onAccessibilityAction?: (event: AccessibilityActionEvent) => void;
 }
 
 export type AppCardProps =
@@ -49,11 +54,14 @@ export function AppCard(props: AppCardProps) {
 
     return (
       <Pressable
+        accessibilityActions={props.accessibilityActions}
         accessibilityLabel={props.accessibilityLabel}
         accessibilityRole="button"
         accessibilityState={{ disabled: props.disabled ?? false }}
         disabled={props.disabled}
         onPress={props.onPress}
+        onLongPress={props.onLongPress}
+        onAccessibilityAction={props.onAccessibilityAction}
         style={pressStyle}
       >
         {props.children}

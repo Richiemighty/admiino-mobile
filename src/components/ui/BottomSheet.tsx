@@ -1,7 +1,16 @@
 import { X } from 'lucide-react-native';
 import type { PropsWithChildren, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { Animated, Modal, Pressable, StyleSheet, View } from 'react-native';
+import {
+  Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useReducedMotion } from '../../features/onboarding/useReducedMotion';
@@ -69,43 +78,54 @@ export function BottomSheet({
           onPress={onClose}
           style={StyleSheet.absoluteFill}
         />
-        <Animated.View
-          accessibilityLabel={title}
-          testID={testID}
-          style={{
-            maxHeight: '86%',
-            width: '100%',
-            maxWidth: 720,
-            alignSelf: 'center',
-            borderTopLeftRadius: themeTokens.radius.xl,
-            borderTopRightRadius: themeTokens.radius.xl,
-            backgroundColor: colors.surface,
-            paddingTop: themeTokens.spacing.md,
-            paddingHorizontal: themeTokens.spacing.lg,
-            paddingBottom: Math.max(insets.bottom, themeTokens.spacing.md),
-            transform: [{ translateY }],
-          }}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1, justifyContent: 'flex-end' }}
         >
-          <View
+          <Animated.View
+            accessibilityLabel={title}
+            testID={testID}
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              minHeight: themeTokens.touchTarget.minimum,
-              marginBottom: themeTokens.spacing.sm,
+              maxHeight: '86%',
+              width: '100%',
+              maxWidth: 720,
+              alignSelf: 'center',
+              borderTopLeftRadius: themeTokens.radius.xl,
+              borderTopRightRadius: themeTokens.radius.xl,
+              backgroundColor: colors.surface,
+              paddingTop: themeTokens.spacing.md,
+              paddingHorizontal: themeTokens.spacing.lg,
+              paddingBottom: Math.max(insets.bottom, themeTokens.spacing.md),
+              transform: [{ translateY }],
             }}
           >
-            <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
-              {title}
-            </AppText>
-            <IconButton
-              accessibilityLabel={`Close ${title.toLowerCase()}`}
-              icon={<X color={colors.text} size={20} />}
-              onPress={onClose}
-            />
-          </View>
-          <View style={{ flexShrink: 1 }}>{children}</View>
-          {footer}
-        </Animated.View>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                minHeight: themeTokens.touchTarget.minimum,
+                marginBottom: themeTokens.spacing.sm,
+              }}
+            >
+              <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
+                {title}
+              </AppText>
+              <IconButton
+                accessibilityLabel={`Close ${title.toLowerCase()}`}
+                icon={<X color={colors.text} size={20} />}
+                onPress={onClose}
+              />
+            </View>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={{ flexShrink: 1 }}
+            >
+              <View>{children}</View>
+            </ScrollView>
+            {footer}
+          </Animated.View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );

@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Bell, ChevronDown, Search } from 'lucide-react-native';
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../auth/AuthProvider';
 import { useInboxCount } from '../../features/inbox/InboxCountProvider';
@@ -17,6 +18,7 @@ export function MainAppHeader({ onProfilePress }: { onProfilePress?: () => void 
   const { unreadCount } = useInboxCount();
   const { colors } = useAppTheme();
   const [switcherVisible, setSwitcherVisible] = useState(false);
+  const insets = useSafeAreaInsets();
   const name =
     [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() ||
     user?.email ||
@@ -32,6 +34,7 @@ export function MainAppHeader({ onProfilePress }: { onProfilePress?: () => void 
           alignItems: 'center',
           gap: themeTokens.spacing.sm,
           paddingHorizontal: themeTokens.spacing.md,
+          paddingTop: insets.top,
           backgroundColor: colors.background,
         }}
       >

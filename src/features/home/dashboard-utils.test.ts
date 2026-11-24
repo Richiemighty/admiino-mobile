@@ -20,6 +20,8 @@ describe('P11 personal dashboard task helpers', () => {
     expect(getDueDateLabel('2026-07-14', now)).toBe('Tomorrow');
     expect(getDueDateLabel('2026-07-13T00:00:00.000Z', now)).toBe('Today');
     expect(getDueDateLabel('not-a-date', now)).toBeNull();
+    expect(getDueDateLabel('2026-07-12', now, 'completed')).toBeNull();
+    expect(getDueDateLabel('2026-07-12', now, 'cancelled')).toBeNull();
   });
 
   it('selects only open, assigned tasks for attention and due-soon sections', () => {

@@ -46,6 +46,9 @@ jest.mock('./service', () => ({
     getMembers: jest.fn(),
     getProjects: jest.fn(),
     getTeams: jest.fn(),
+    getWatchers: jest.fn(),
+    watchTask: jest.fn(),
+    unwatchTask: jest.fn(),
   },
 }));
 
@@ -151,6 +154,7 @@ describe('P12 task lists, detail, and forms', () => {
     jest.mocked(taskService.getTask).mockResolvedValue({ task, access: editableAccess });
     jest.mocked(taskService.getDependencies).mockResolvedValue(emptyDependencies);
     jest.mocked(taskService.getTeamLead).mockResolvedValue(null);
+    jest.mocked(taskService.getWatchers).mockResolvedValue([]);
     jest.mocked(taskService.createTask).mockResolvedValue({
       ...task,
       id: 'task-created',
@@ -176,6 +180,33 @@ describe('P12 task lists, detail, and forms', () => {
     cleanup();
     jest.restoreAllMocks();
   });
+
+  it('offers accessible task actions and exposes a visible status sheet', async () => {
+    jest.mocked(taskService.listTasks).mockResolvedValue({
+      ...page('workspace-1', 'Swipeable task'),
+      tasks: [
+        {
+          ...task,
+          id: 'task-swipe',
+          title: 'Swipeable task',
+          access: editableAccess,
+        },
+      ],
+    });
+    await renderWithProviders(<TasksScreen />);
+    await screen.findByText('Swipeable task');
+
+    await fireEvent(
+      await screen.findByLabelText('Open task Swipeable task'),
+      'accessibilityAction',
+      { nativeEvent: { actionName: 'activate' } },
+    );
+    expect(await screen.findByTestId('task-actions-sheet')).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Change task status' }));
+    expect(await screen.findByTestId('task-status-sheet')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Set status to In Progress' })).toBeTruthy();
+  }, 10000);
 
   it('loads My Tasks and Created by Me from their server relations', async () => {
     jest

@@ -1,7 +1,15 @@
 import { router, useFocusEffect } from 'expo-router';
-import { ChevronDown, Ellipsis, ListTodo, Search, SlidersHorizontal, X } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
+import { ChevronDown, ListTodo, Search, SlidersHorizontal, X } from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  FlatList,
+  PanResponder,
+  Pressable,
+  RefreshControl,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
@@ -92,12 +100,51 @@ function FilterChip({
 function TaskCard({
   task,
   onActions,
+  open,
+  onOpen,
+  onClose,
 }: {
   task: TaskListItem;
   onActions: (task: TaskListItem) => void;
+  open: boolean;
+  onOpen: (taskId: string) => void;
+  onClose: (taskId: string) => void;
 }) {
   const { colors } = useAppTheme();
-  const dueLabel = getDueDateLabel(task.deadline);
+  const translateX = useMemo(() => new Animated.Value(open ? -168 : 0), [open]);
+  useEffect(() => {
+    Animated.spring(translateX, {
+      toValue: open ? -168 : 0,
+      damping: 22,
+      stiffness: 260,
+      useNativeDriver: true,
+    }).start();
+  }, [open, translateX]);
+  const responder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
+        onPanResponderMove: (_event, gesture) => {
+          const base = open ? -168 : 0;
+          translateX.setValue(Math.max(-168, Math.min(0, base + gesture.dx)));
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          if (gesture.dx < -45) onOpen(task.id);
+          else if (gesture.dx > 35) onClose(task.id);
+          else {
+            Animated.spring(translateX, {
+              toValue: open ? -168 : 0,
+              damping: 22,
+              stiffness: 260,
+              useNativeDriver: true,
+            }).start();
+          }
+        },
+      }),
+    [open, onClose, onOpen, task.id, translateX],
+  );
+  const dueLabel = getDueDateLabel(task.deadline, new Date(), task.status);
   const related = task.project?.name ?? task.team?.name ?? null;
   const assignees =
     task.assignees && task.assignees.length ? task.assignees : task.assignee ? [task.assignee] : [];
@@ -105,80 +152,127 @@ function TaskCard({
     [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || 'Assignee';
 
   return (
-    <AppCard
-      accessibilityLabel={`Open task ${task.title}`}
-      onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
-      padding="sm"
-      style={{ gap: themeTokens.spacing.xxs, borderWidth: 0 }}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
-        <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
-          <AppText numberOfLines={2} variant="label">
-            {task.title}
-          </AppText>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.xs }}>
-            <AppText numberOfLines={1} tone="secondary" variant="caption">
-              {labelFor(task.status)}
+    <View style={{ height: 118, overflow: 'hidden', borderRadius: themeTokens.radius.md }}>
+      <View
+        style={{
+          position: 'absolute',
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 168,
+          flexDirection: 'row',
+          backgroundColor: colors.primaryAction,
+        }}
+      >
+        {task.access?.canEdit ? (
+          <Pressable
+            accessibilityLabel={`Change status for ${task.title}`}
+            accessibilityRole="button"
+            onPress={() => onActions(task)}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingHorizontal: 4,
+            }}
+          >
+            <AppText tone="inverse" variant="caption">
+              Status
             </AppText>
-            <AppText tone="subtle" variant="caption">
-              ·
+          </Pressable>
+        ) : null}
+        {task.access?.canEdit && !task.access.readOnly ? (
+          <Pressable
+            accessibilityLabel={`Edit ${task.title}`}
+            accessibilityRole="button"
+            onPress={() => router.push(`/task-edit/${encodeURIComponent(task.id)}`)}
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <AppText tone="inverse" variant="caption">
+              Edit
             </AppText>
-            <AppText numberOfLines={1} tone="secondary" variant="caption">
-              {labelFor(task.priority)}
-            </AppText>
-          </View>
-        </View>
-        <Pressable
-          accessibilityLabel={`Task actions for ${task.title}`}
-          accessibilityRole="button"
-          onPress={() => onActions(task)}
-          style={{
-            width: themeTokens.touchTarget.minimum,
-            height: themeTokens.touchTarget.minimum,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ellipsis color={colors.textMuted} size={20} />
-        </Pressable>
+          </Pressable>
+        ) : null}
       </View>
-      {dueLabel && (
-        <AppText
-          accessibilityLabel={`Due ${dueLabel}`}
-          tone={dueLabel === 'Overdue' ? 'danger' : 'secondary'}
-          variant="caption"
+      <Animated.View
+        {...responder.panHandlers}
+        style={{
+          flex: 1,
+          transform: [{ translateX }],
+        }}
+      >
+        <AppCard
+          accessibilityLabel={`Open task ${task.title}`}
+          accessibilityActions={[
+            { name: 'activate', label: `Open task actions for ${task.title}` },
+          ]}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === 'activate') onActions(task);
+          }}
+          onLongPress={() => onActions(task)}
+          onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
+          padding="sm"
+          style={{ height: 118, gap: themeTokens.spacing.xxs, borderWidth: 0 }}
         >
-          {dueLabel}
-        </AppText>
-      )}
-      {assignees.length > 0 ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {assignees.slice(0, 3).map((person, index) => (
-            <View key={person.id} style={{ marginLeft: index === 0 ? 0 : -7 }}>
-              <UserAvatar
-                imageUrl={person.profilePictureUrl}
-                name={assigneeName(person)}
-                size={28}
-              />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
+            <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
+              <AppText numberOfLines={2} variant="label">
+                {task.title}
+              </AppText>
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.xs }}
+              >
+                <AppText numberOfLines={1} tone="secondary" variant="caption">
+                  {labelFor(task.status)}
+                </AppText>
+                <AppText tone="subtle" variant="caption">
+                  ·
+                </AppText>
+                <AppText numberOfLines={1} tone="secondary" variant="caption">
+                  {labelFor(task.priority)}
+                </AppText>
+              </View>
             </View>
-          ))}
-          {assignees.length > 3 ? (
-            <AppText tone="secondary" variant="caption" style={{ marginLeft: 6 }}>
-              +{assignees.length - 3}
+          </View>
+          {dueLabel && (
+            <AppText
+              accessibilityLabel={`Due ${dueLabel}`}
+              tone={dueLabel === 'Overdue' ? 'danger' : 'secondary'}
+              variant="caption"
+            >
+              {dueLabel}
+            </AppText>
+          )}
+          {assignees.length > 0 ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {assignees.slice(0, 3).map((person, index) => (
+                <View key={person.id} style={{ marginLeft: index === 0 ? 0 : -7 }}>
+                  <UserAvatar
+                    imageUrl={person.profilePictureUrl}
+                    name={assigneeName(person)}
+                    size={28}
+                  />
+                </View>
+              ))}
+              {assignees.length > 3 ? (
+                <AppText tone="secondary" variant="caption" style={{ marginLeft: 6 }}>
+                  +{assignees.length - 3}
+                </AppText>
+              ) : null}
+            </View>
+          ) : (
+            <AppText tone="secondary" variant="caption">
+              Unassigned
+            </AppText>
+          )}
+          {related ? (
+            <AppText numberOfLines={1} tone="subtle" variant="caption">
+              {related}
             </AppText>
           ) : null}
-        </View>
-      ) : (
-        <AppText tone="secondary" variant="caption">
-          Unassigned
-        </AppText>
-      )}
-      {related ? (
-        <AppText numberOfLines={1} tone="subtle" variant="caption">
-          {related}
-        </AppText>
-      ) : null}
-    </AppCard>
+        </AppCard>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -188,7 +282,9 @@ export function TasksScreen() {
 }
 
 function TasksScreenContent() {
-  const { activeWorkspace, permissions, status, workspacePermissionStatus, logout } = useAuth();
+  const { activeWorkspace, permissions, status, workspacePermissionStatus, logout, user } =
+    useAuth();
+  const userId = user?.id;
   const { colors } = useAppTheme();
   const [relation, setRelation] = useState<TaskRelation>('assigned');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
@@ -197,6 +293,10 @@ function TasksScreenContent() {
   const [draftPriority, setDraftPriority] = useState<PriorityFilter>('');
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [actionTask, setActionTask] = useState<TaskListItem | null>(null);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [statusTask, setStatusTask] = useState<TaskListItem | null>(null);
+  const [watchingTaskIds, setWatchingTaskIds] = useState<Set<string>>(new Set());
+  const [watchLoadingId, setWatchLoadingId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [pageData, setPageData] = useState<ScopedTaskPage | null>(null);
@@ -622,7 +722,32 @@ function TasksScreenContent() {
             />
           }
           renderItem={({ item }) => (
-            <TaskCard task={item} onActions={(selected) => setActionTask(selected)} />
+            <TaskCard
+              task={item}
+              open={openTaskId === item.id}
+              onClose={(taskId) =>
+                setOpenTaskId((current) => (current === taskId ? null : current))
+              }
+              onOpen={(taskId) => setOpenTaskId(taskId)}
+              onActions={(selected) => {
+                setOpenTaskId(selected.id);
+                setActionTask(selected);
+                if (workspaceId) {
+                  void taskService
+                    .getWatchers(selected.id, workspaceId)
+                    .then((watchers) => {
+                      setWatchingTaskIds((current) => {
+                        const next = new Set(current);
+                        if (watchers.some((watcher) => watcher.id === userId))
+                          next.add(selected.id);
+                        else next.delete(selected.id);
+                        return next;
+                      });
+                    })
+                    .catch(() => undefined);
+                }
+              }}
+            />
           )}
           showsHorizontalScrollIndicator={false}
           showsVerticalScrollIndicator={false}
@@ -641,8 +766,8 @@ function TasksScreenContent() {
               <AppButton
                 accessibilityLabel="Change task status"
                 onPress={() => {
+                  setStatusTask(actionTask);
                   setActionTask(null);
-                  router.push(`/tasks/${encodeURIComponent(actionTask.id)}`);
                 }}
                 variant="outline"
               >
@@ -661,6 +786,105 @@ function TasksScreenContent() {
                 Edit task
               </AppButton>
             ) : null}
+            {actionTask.access?.canView ? (
+              <AppButton
+                accessibilityLabel={
+                  watchingTaskIds.has(actionTask.id) ? 'Unwatch task' : 'Watch task'
+                }
+                disabled={watchLoadingId === actionTask.id}
+                loading={watchLoadingId === actionTask.id}
+                onPress={async () => {
+                  if (!workspaceId) return;
+                  const isWatching = watchingTaskIds.has(actionTask.id);
+                  setWatchLoadingId(actionTask.id);
+                  try {
+                    if (isWatching) {
+                      await taskService.unwatchTask(actionTask.id, workspaceId);
+                      setWatchingTaskIds((current) => {
+                        const next = new Set(current);
+                        next.delete(actionTask.id);
+                        return next;
+                      });
+                    } else {
+                      await taskService.watchTask(actionTask.id, workspaceId);
+                      setWatchingTaskIds((current) => new Set(current).add(actionTask.id));
+                    }
+                    setActionTask(null);
+                    setOpenTaskId(null);
+                  } catch (watchError) {
+                    setError(
+                      watchError instanceof ApiError && watchError.status === 403
+                        ? 'You do not have permission to watch this task.'
+                        : 'The watch state could not be changed. Please try again.',
+                    );
+                  } finally {
+                    setWatchLoadingId(null);
+                  }
+                }}
+                variant="outline"
+              >
+                {watchingTaskIds.has(actionTask.id) ? 'Unwatch' : 'Watch'}
+              </AppButton>
+            ) : null}
+          </View>
+        ) : null}
+      </BottomSheet>
+      <BottomSheet
+        onClose={() => setStatusTask(null)}
+        testID="task-status-sheet"
+        title="Change status"
+        visible={Boolean(statusTask)}
+      >
+        {statusTask ? (
+          <View style={{ gap: themeTokens.spacing.sm, paddingBottom: themeTokens.spacing.sm }}>
+            {TASK_STATUSES.filter(
+              (candidate) =>
+                candidate !== statusTask.status &&
+                !(statusTask.status === 'in_review' && candidate === 'completed'),
+            ).map((candidate) => (
+              <AppButton
+                accessibilityLabel={`Set status to ${labelFor(candidate)}`}
+                disabled={watchLoadingId === statusTask.id}
+                key={candidate}
+                onPress={async () => {
+                  if (!workspaceId || !statusTask.access) return;
+                  setWatchLoadingId(statusTask.id);
+                  setError(null);
+                  try {
+                    const updated = await taskService.updateTask(
+                      statusTask.id,
+                      workspaceId,
+                      { status: candidate },
+                      statusTask.access,
+                    );
+                    setPageData((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            tasks: previous.tasks.map((task) =>
+                              task.id === updated.id ? { ...task, ...updated } : task,
+                            ),
+                          }
+                        : previous,
+                    );
+                    setStatusTask(null);
+                    setOpenTaskId(null);
+                  } catch (statusError) {
+                    setError(
+                      statusError instanceof ApiError &&
+                        [400, 403, 409].includes(statusError.status)
+                        ? 'The server rejected this status change. The task was not changed.'
+                        : 'The status could not be updated. Please try again.',
+                    );
+                  } finally {
+                    setWatchLoadingId(null);
+                  }
+                }}
+                variant="outline"
+              >
+                {labelFor(candidate)}
+              </AppButton>
+            ))}
           </View>
         ) : null}
       </BottomSheet>

@@ -51,6 +51,63 @@ function serviceFor(
 }
 
 describe('P14 workspace approval API contracts', () => {
+  it('accepts valid empty join, verification, and permission queues', async () => {
+    const service = serviceFor((url) => {
+      if (url.pathname.endsWith('/join/requests')) {
+        return {
+          status: 'success',
+          data: {
+            requests: [],
+            pagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
+          },
+        };
+      }
+      if (url.pathname.endsWith('/pending-verifications')) {
+        return { status: 'success', data: { pendingMembers: [] } };
+      }
+      return { status: 'success', data: { requests: [] } };
+    });
+
+    await expect(service.listJoinRequests(workspaceId)).resolves.toMatchObject({
+      requests: [],
+      total: 0,
+    });
+    await expect(service.listPendingVerifications(workspaceId)).resolves.toEqual([]);
+    await expect(service.listAccessRequests(workspaceId)).resolves.toEqual([]);
+  });
+
+  it('accepts nullable requester names and email fields', async () => {
+    const service = serviceFor(() => ({
+      status: 'success',
+      data: {
+        requests: [
+          {
+            ...joinRequest,
+            requester: {
+              id: null,
+              firstName: null,
+              lastName: null,
+              email: null,
+            },
+          },
+        ],
+        pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+      },
+    }));
+
+    await expect(service.listJoinRequests(workspaceId)).resolves.toMatchObject({
+      requests: [
+        {
+          requester: {
+            id: '',
+            firstName: null,
+            lastName: null,
+            email: null,
+          },
+        },
+      ],
+    });
+  });
   it('loads pending join requests with verified pagination and workspace context', async () => {
     const requests: { url: URL; init: RequestInit }[] = [];
     const service = serviceFor(
