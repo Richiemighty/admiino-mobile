@@ -45,6 +45,7 @@ export interface ProjectRecord {
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
+  color?: string | null;
   members?: EmbeddedProjectMember[];
 }
 
@@ -167,7 +168,8 @@ function isProjectRecord(value: unknown): value is ProjectRecord {
     !isOptionalString(value.leadId) ||
     !isOptionalString(value.createdBy) ||
     !isOptionalString(value.createdAt) ||
-    !isOptionalString(value.updatedAt)
+    !isOptionalString(value.updatedAt) ||
+    !isOptionalString(value.color)
   ) {
     return false;
   }

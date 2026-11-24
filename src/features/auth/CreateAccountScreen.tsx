@@ -15,7 +15,13 @@ export function CreateAccountScreen() {
   const openSignup = async () => {
     setError(null);
     try {
-      await WebBrowser.openBrowserAsync(SECURE_SIGNUP_URL);
+      await WebBrowser.openBrowserAsync(SECURE_SIGNUP_URL, {
+        dismissButtonStyle: 'close',
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.AUTOMATIC,
+      });
+      setError(
+        'Browser signup finished. Return to Sign In; Google-only accounts must use the verified Google callback in a development build.',
+      );
     } catch {
       setError('The secure account page could not be opened. Please try again.');
     }

@@ -24,6 +24,7 @@ export interface TaskPerson {
   firstName?: string | null;
   lastName?: string | null;
   email?: string | null;
+  profilePictureUrl?: string | null;
 }
 
 export interface TaskAttachmentRecord {
@@ -170,7 +171,10 @@ function isTaskPerson(value: unknown): value is TaskPerson {
     (value.lastName === undefined ||
       value.lastName === null ||
       typeof value.lastName === 'string') &&
-    (value.email === undefined || value.email === null || typeof value.email === 'string')
+    (value.email === undefined || value.email === null || typeof value.email === 'string') &&
+    (value.profilePictureUrl === undefined ||
+      value.profilePictureUrl === null ||
+      typeof value.profilePictureUrl === 'string')
   );
 }
 
@@ -750,6 +754,51 @@ export class TaskService {
     return isRecord(team.leadMember) && typeof team.leadMember.userId === 'string'
       ? team.leadMember.userId
       : null;
+  }
+
+  async getWatchers(
+    taskId: string,
+    workspaceId: string,
+    signal?: AbortSignal,
+  ): Promise<TaskPerson[]> {
+    const token = await this.sessions.getAccessToken();
+    const response: unknown = await this.client.get(
+      `/tasks/${encodeURIComponent(taskId)}/watchers`,
+      { token, workspaceId, signal },
+    );
+    requireSuccess(response, 'The task watcher response was invalid.');
+    const data = requireDataRecord(response.data, 'The task watcher response was invalid.');
+    if (!Array.isArray(data.watchers)) {
+      throw new ApiError('The backend returned an invalid watcher list.', 502);
+    }
+    const watchers: TaskPerson[] = [];
+    for (const watcher of data.watchers) {
+      if (!isRecord(watcher) || !isRecord(watcher.user)) continue;
+      if (!isTaskPerson(watcher.user)) {
+        throw new ApiError('The backend returned an invalid task watcher.', 502);
+      }
+      watchers.push(watcher.user);
+    }
+    return watchers;
+  }
+
+  async watchTask(taskId: string, workspaceId: string, signal?: AbortSignal): Promise<void> {
+    const token = await this.sessions.getAccessToken();
+    const response: unknown = await this.client.post(
+      `/tasks/${encodeURIComponent(taskId)}/watch`,
+      {},
+      { token, workspaceId, signal },
+    );
+    requireSuccess(response, 'The watch response was invalid.');
+  }
+
+  async unwatchTask(taskId: string, workspaceId: string, signal?: AbortSignal): Promise<void> {
+    const token = await this.sessions.getAccessToken();
+    const response: unknown = await this.client.request(
+      `/tasks/${encodeURIComponent(taskId)}/unwatch`,
+      { method: 'DELETE', token, workspaceId, signal },
+    );
+    requireSuccess(response, 'The unwatch response was invalid.');
   }
 }
 

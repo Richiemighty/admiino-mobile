@@ -1,10 +1,10 @@
 import type { Href } from 'expo-router';
 import {
   Building2,
+  CalendarDays,
   ChevronDown,
   FolderKanban,
   Home,
-  Inbox,
   ListTodo,
   LogOut,
   Settings,
@@ -38,14 +38,14 @@ interface NavigationDrawerProps {
   onNavigate: (route: Href) => void;
   onSwitchWorkspace: () => void;
   onSignOut: () => Promise<void>;
-  activeDestination: 'Home' | 'Tasks' | 'Projects' | 'Inbox';
+  activeDestination: 'Home' | 'Tasks' | 'Projects' | 'Calendar';
 }
 
 const destinations = [
   { label: 'Home', route: '/(tabs)', Icon: Home },
   { label: 'Tasks', route: '/(tabs)/tasks', Icon: ListTodo },
   { label: 'Projects', route: '/(tabs)/projects', Icon: FolderKanban },
-  { label: 'Inbox', route: '/(tabs)/inbox', Icon: Inbox },
+  { label: 'Calendar', route: '/(tabs)/calendar', Icon: CalendarDays },
 ] as const;
 
 export function NavigationDrawer({
@@ -150,179 +150,184 @@ export function NavigationDrawer({
   if (!visible) return null;
 
   return (
-    <Modal
-      accessibilityViewIsModal
-      animationType="none"
-      onRequestClose={() => close()}
-      statusBarTranslucent
-      transparent
-      visible={visible}
-    >
-      <View style={{ flex: 1, flexDirection: 'row' }}>
-        <Animated.View
-          style={{
-            ...StyleSheet.absoluteFill,
-            backgroundColor: '#000000',
-            opacity: overlayOpacity,
-          }}
-        />
-        <Pressable
-          accessibilityLabel="Close navigation menu"
-          accessibilityRole="button"
-          onPress={() => close()}
-          style={StyleSheet.absoluteFill}
-        />
-        <Animated.View
-          {...closeGesture.panHandlers}
-          style={{
-            width: drawerWidth,
-            maxWidth: 360,
-            height: '100%',
-            paddingTop: insets.top + themeTokens.spacing.md,
-            paddingBottom: Math.max(insets.bottom, themeTokens.spacing.md),
-            paddingHorizontal: themeTokens.spacing.lg,
-            backgroundColor: colors.surface,
-            transform: [{ translateX }],
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <View
-              style={{
-                minHeight: 60,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: themeTokens.spacing.sm,
-                paddingBottom: themeTokens.spacing.lg,
-              }}
-            >
-              <Pressable
-                accessibilityLabel="Open My Profile"
-                accessibilityRole="button"
-                onPress={() => close(() => onNavigate('/profile'))}
+    <>
+      <Modal
+        accessibilityViewIsModal
+        animationType="none"
+        onRequestClose={() => close()}
+        statusBarTranslucent
+        transparent
+        visible={visible}
+      >
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          <Animated.View
+            style={{
+              ...StyleSheet.absoluteFill,
+              backgroundColor: '#000000',
+              opacity: overlayOpacity,
+            }}
+          />
+          <Pressable
+            accessibilityLabel="Close navigation menu"
+            accessibilityRole="button"
+            onPress={() => close()}
+            style={StyleSheet.absoluteFill}
+          />
+          <Animated.View
+            {...closeGesture.panHandlers}
+            style={{
+              width: drawerWidth,
+              maxWidth: 360,
+              height: '100%',
+              paddingTop: insets.top + themeTokens.spacing.md,
+              paddingBottom: Math.max(insets.bottom, themeTokens.spacing.md),
+              paddingHorizontal: themeTokens.spacing.lg,
+              backgroundColor: colors.surface,
+              transform: [{ translateX }],
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <View
                 style={{
-                  flex: 1,
-                  minHeight: 56,
+                  minHeight: 60,
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: themeTokens.spacing.md,
+                  gap: themeTokens.spacing.sm,
+                  paddingBottom: themeTokens.spacing.lg,
                 }}
               >
-                <UserAvatar imageUrl={user?.profilePictureUrl} name={fullName} size={56} />
-                <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
-                  <AppText numberOfLines={1} variant="label">
-                    {fullName}
+                <Pressable
+                  accessibilityLabel="Open My Profile"
+                  accessibilityRole="button"
+                  onPress={() => close(() => onNavigate('/profile'))}
+                  style={{
+                    flex: 1,
+                    minHeight: 56,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: themeTokens.spacing.md,
+                  }}
+                >
+                  <UserAvatar imageUrl={user?.profilePictureUrl} name={fullName} size={56} />
+                  <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
+                    <AppText numberOfLines={1} variant="label">
+                      {fullName}
+                    </AppText>
+                    <AppText numberOfLines={1} tone="secondary" variant="caption">
+                      {user?.email ?? ''}
+                    </AppText>
+                  </View>
+                  <AppText tone="link" variant="caption">
+                    Profile
                   </AppText>
-                  <AppText numberOfLines={1} tone="secondary" variant="caption">
-                    {user?.email ?? ''}
-                  </AppText>
-                </View>
-                <AppText tone="link" variant="caption">
-                  Profile
-                </AppText>
-              </Pressable>
-              <IconButton
-                accessibilityLabel="Close navigation menu"
-                icon={<X color={colors.textMuted} size={20} />}
-                onPress={() => close()}
-              />
-            </View>
-
-            <Pressable
-              accessibilityLabel={`Switch workspace, current workspace ${workspace?.company.name ?? 'not selected'}`}
-              accessibilityRole="button"
-              onPress={() => close(onSwitchWorkspace)}
-              style={{
-                minHeight: 60,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'flex-start',
-                gap: themeTokens.spacing.md,
-                paddingHorizontal: themeTokens.spacing.md,
-                marginBottom: themeTokens.spacing.lg,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: themeTokens.radius.md,
-                backgroundColor: colors.surface,
-              }}
-            >
-              <Building2 color={colors.primaryAction} size={20} />
-              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ flex: 1 }}>
-                  <AppText numberOfLines={1} variant="label">
-                    {workspace?.company.name ?? 'Choose workspace'}
-                  </AppText>
-                  <AppText tone="secondary" variant="caption">
-                    Current workspace
-                  </AppText>
-                </View>
-                <ChevronDown color={colors.textMuted} size={18} />
+                </Pressable>
+                <IconButton
+                  accessibilityLabel="Close navigation menu"
+                  icon={<X color={colors.textMuted} size={20} />}
+                  onPress={() => close()}
+                />
               </View>
-            </Pressable>
 
-            <ScrollView
-              showsHorizontalScrollIndicator={false}
-              showsVerticalScrollIndicator={false}
-              style={{ flex: 1 }}
-            >
-              <View style={{ gap: themeTokens.spacing.xs }}>
-                {destinations.map(({ label, route, Icon }) => {
-                  const selected = label === activeDestination;
-                  return (
-                    <Pressable
-                      accessibilityLabel={`Navigate to ${label}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      key={label}
-                      onPress={() => close(() => onNavigate(route))}
-                      style={{
-                        minHeight: themeTokens.touchTarget.minimum,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: themeTokens.spacing.md,
-                        borderRadius: themeTokens.radius.md,
-                        paddingHorizontal: themeTokens.spacing.md,
-                        backgroundColor: selected ? colors.primarySurface : 'transparent',
-                      }}
-                    >
-                      <Icon color={selected ? colors.primaryAction : colors.textMuted} size={20} />
-                      <AppText tone={selected ? 'link' : 'primary'} variant="label">
-                        {label}
-                      </AppText>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </ScrollView>
-
-            <View style={{ paddingTop: themeTokens.spacing.md }}>
               <Pressable
-                accessibilityLabel="Open Settings"
+                accessibilityLabel={`Switch workspace, current workspace ${workspace?.company.name ?? 'not selected'}`}
                 accessibilityRole="button"
-                onPress={() => close(() => onNavigate('/settings'))}
+                onPress={() => close(onSwitchWorkspace)}
                 style={{
-                  minHeight: themeTokens.touchTarget.minimum,
+                  minHeight: 60,
                   flexDirection: 'row',
                   alignItems: 'center',
+                  justifyContent: 'flex-start',
                   gap: themeTokens.spacing.md,
                   paddingHorizontal: themeTokens.spacing.md,
+                  marginBottom: themeTokens.spacing.lg,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: themeTokens.radius.md,
+                  backgroundColor: colors.surface,
                 }}
               >
-                <Settings color={colors.textMuted} size={20} />
-                <AppText variant="label">Settings</AppText>
+                <Building2 color={colors.primaryAction} size={20} />
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <AppText numberOfLines={1} variant="label">
+                      {workspace?.company.name ?? 'Choose workspace'}
+                    </AppText>
+                    <AppText tone="secondary" variant="caption">
+                      Current workspace
+                    </AppText>
+                  </View>
+                  <ChevronDown color={colors.textMuted} size={18} />
+                </View>
               </Pressable>
-              <AppButton
-                accessibilityLabel="Sign out"
-                icon={<LogOut color={colors.textMuted} size={18} />}
-                onPress={signOut}
-                style={{ justifyContent: 'flex-start' }}
-                variant="ghost"
+
+              <ScrollView
+                showsHorizontalScrollIndicator={false}
+                showsVerticalScrollIndicator={false}
+                style={{ flex: 1 }}
               >
-                Sign Out
-              </AppButton>
+                <View style={{ gap: themeTokens.spacing.xs }}>
+                  {destinations.map(({ label, route, Icon }) => {
+                    const selected = label === activeDestination;
+                    return (
+                      <Pressable
+                        accessibilityLabel={`Navigate to ${label}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        key={label}
+                        onPress={() => close(() => onNavigate(route))}
+                        style={{
+                          minHeight: themeTokens.touchTarget.minimum,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: themeTokens.spacing.md,
+                          borderRadius: themeTokens.radius.md,
+                          paddingHorizontal: themeTokens.spacing.md,
+                          backgroundColor: selected ? colors.primarySurface : 'transparent',
+                        }}
+                      >
+                        <Icon
+                          color={selected ? colors.primaryAction : colors.textMuted}
+                          size={20}
+                        />
+                        <AppText tone={selected ? 'link' : 'primary'} variant="label">
+                          {label}
+                        </AppText>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <View style={{ paddingTop: themeTokens.spacing.md }}>
+                <Pressable
+                  accessibilityLabel="Open Settings"
+                  accessibilityRole="button"
+                  onPress={() => close(() => onNavigate('/settings'))}
+                  style={{
+                    minHeight: themeTokens.touchTarget.minimum,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: themeTokens.spacing.md,
+                    paddingHorizontal: themeTokens.spacing.md,
+                  }}
+                >
+                  <Settings color={colors.textMuted} size={20} />
+                  <AppText variant="label">Settings</AppText>
+                </Pressable>
+                <AppButton
+                  accessibilityLabel="Sign out"
+                  icon={<LogOut color={colors.textMuted} size={18} />}
+                  onPress={signOut}
+                  style={{ justifyContent: 'flex-start' }}
+                  variant="ghost"
+                >
+                  Sign Out
+                </AppButton>
+              </View>
             </View>
-          </View>
-        </Animated.View>
-      </View>
-    </Modal>
+          </Animated.View>
+        </View>
+      </Modal>
+    </>
   );
 }

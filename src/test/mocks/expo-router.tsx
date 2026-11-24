@@ -9,7 +9,8 @@ const focusEffects = new Map<FocusEffect, void | (() => void)>();
 
 export const Stack = Object.assign(RouteContainer, { Screen: () => null });
 export const Tabs = Object.assign(RouteContainer, {
-  Screen: ({ name }: { name: string }) => <View testID={`tab-screen-${name}`} />,
+  Screen: ({ name, options }: { name: string; options?: { href?: unknown } }) =>
+    options?.href === null ? null : <View testID={`tab-screen-${name}`} />,
 });
 export const Slot = RouteContainer;
 export const Link = RouteContainer;

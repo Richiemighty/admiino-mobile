@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { Alert, View } from 'react-native';
 
 import { useAuth } from '../../auth/AuthProvider';
+import { MainAppHeader } from '../../components/navigation/MainAppHeader';
+import { QuickWorkspaceSwitcher } from '../../components/navigation/QuickWorkspaceSwitcher';
 import {
   AppButton,
   AppCard,
@@ -20,6 +22,7 @@ export function MoreScreen() {
   const { colors } = useAppTheme();
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [switcherVisible, setSwitcherVisible] = useState(false);
   const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || 'Admiino user';
   const role = permissions?.role
     ? permissions.role.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
@@ -45,74 +48,78 @@ export function MoreScreen() {
   };
 
   return (
-    <AppScreen scrollable padding="xl">
-      <View
-        style={{ width: '100%', maxWidth: 680, alignSelf: 'center', gap: themeTokens.spacing.lg }}
-      >
-        <AppText accessibilityRole="header" variant="title">
-          More
-        </AppText>
+    <AppScreen edges={['right', 'bottom', 'left']} padding="md">
+      <MainAppHeader />
+      <View style={{ flex: 1, padding: themeTokens.spacing.xl }}>
+        <View
+          style={{ width: '100%', maxWidth: 680, alignSelf: 'center', gap: themeTokens.spacing.lg }}
+        >
+          <AppText accessibilityRole="header" variant="title">
+            More
+          </AppText>
 
-        <View style={{ gap: themeTokens.spacing.sm }}>
-          <AppText variant="label">Account</AppText>
-          <AppCard
-            accessibilityLabel="Open My Profile"
-            onPress={() => router.push('/profile')}
-            padding="md"
-          >
-            <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.md }}
+          <View style={{ gap: themeTokens.spacing.sm }}>
+            <AppText variant="label">Account</AppText>
+            <AppCard
+              accessibilityLabel="Open My Profile"
+              onPress={() => router.push('/profile')}
+              padding="md"
             >
-              <UserAvatar imageUrl={user?.profilePictureUrl} name={name} size={56} />
-              <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
-                <AppText variant="heading">{name}</AppText>
-                {user?.email && <AppText tone="secondary">{user.email}</AppText>}
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.md }}
+              >
+                <UserAvatar imageUrl={user?.profilePictureUrl} name={name} size={56} />
+                <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
+                  <AppText variant="heading">{name}</AppText>
+                  {user?.email && <AppText tone="secondary">{user.email}</AppText>}
+                </View>
               </View>
-            </View>
-          </AppCard>
-        </View>
+            </AppCard>
+          </View>
 
-        <View style={{ gap: themeTokens.spacing.sm }}>
-          <AppText variant="label">Workspace</AppText>
-          <AppCard padding="md" style={{ gap: themeTokens.spacing.sm }}>
-            <AppText variant="heading">
-              {activeWorkspace?.company.name ?? 'No active workspace'}
-            </AppText>
-            <AppText tone="secondary">{role}</AppText>
+          <View style={{ gap: themeTokens.spacing.sm }}>
+            <AppText variant="label">Workspace</AppText>
+            <AppCard padding="md" style={{ gap: themeTokens.spacing.sm }}>
+              <AppText variant="heading">
+                {activeWorkspace?.company.name ?? 'No active workspace'}
+              </AppText>
+              <AppText tone="secondary">{role}</AppText>
+              <AppButton
+                accessibilityLabel="Switch workspace"
+                icon={<ArrowRightLeft color={colors.primaryAction} size={18} />}
+                onPress={() => setSwitcherVisible(true)}
+                variant="outline"
+              >
+                Switch workspace
+              </AppButton>
+            </AppCard>
+          </View>
+
+          <View style={{ gap: themeTokens.spacing.sm }}>
+            <AppText variant="label">Settings</AppText>
             <AppButton
-              accessibilityLabel="Switch workspace"
-              icon={<ArrowRightLeft color={colors.primaryAction} size={18} />}
-              onPress={() => router.push('/workspace-select')}
+              accessibilityLabel="Open Settings"
+              icon={<Settings color={colors.primaryAction} size={18} />}
+              onPress={() => router.push('/settings')}
               variant="outline"
             >
-              Switch workspace
+              Settings
             </AppButton>
-          </AppCard>
-        </View>
+          </View>
 
-        <View style={{ gap: themeTokens.spacing.sm }}>
-          <AppText variant="label">Settings</AppText>
+          {error && <InlineError message={error} />}
+
           <AppButton
-            accessibilityLabel="Open Settings"
-            icon={<Settings color={colors.primaryAction} size={18} />}
-            onPress={() => router.push('/settings')}
-            variant="outline"
+            accessibilityLabel="Sign out"
+            icon={<LogOut color={colors.onPrimary} size={18} />}
+            loading={signingOut}
+            onPress={confirmSignOut}
           >
-            Settings
+            Sign out
           </AppButton>
         </View>
-
-        {error && <InlineError message={error} />}
-
-        <AppButton
-          accessibilityLabel="Sign out"
-          icon={<LogOut color={colors.onPrimary} size={18} />}
-          loading={signingOut}
-          onPress={confirmSignOut}
-        >
-          Sign out
-        </AppButton>
       </View>
+      <QuickWorkspaceSwitcher onClose={() => setSwitcherVisible(false)} visible={switcherVisible} />
     </AppScreen>
   );
 }

@@ -1,30 +1,28 @@
 import { router, useFocusEffect } from 'expo-router';
 import {
   CalendarDays,
-  ChevronDown,
   ChevronRight,
   CircleAlert,
   ClipboardList,
   FolderKanban,
   ListTodo,
   Plus,
-  Search,
   ShieldAlert,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PanResponder, Pressable, RefreshControl, ScrollView, View } from 'react-native';
+import { PanResponder, RefreshControl, ScrollView, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
+import { MainAppHeader } from '../../components/navigation/MainAppHeader';
+import { QuickWorkspaceSwitcher } from '../../components/navigation/QuickWorkspaceSwitcher';
 import {
   AppButton,
   AppCard,
   AppScreen,
   AppText,
-  IconButton,
   InlineError,
   LoadingState,
-  UserAvatar,
 } from '../../components/ui';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
@@ -125,6 +123,7 @@ export function HomeScreen() {
     useAuth();
   const { colors } = useAppTheme();
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const [switcherVisible, setSwitcherVisible] = useState(false);
   const logoutRef = useRef(logout);
   useEffect(() => {
     logoutRef.current = logout;
@@ -206,10 +205,6 @@ export function HomeScreen() {
   const summary = currentDashboard?.summary;
   const attentionTasks = currentDashboard ? getNeedsAttentionTasks(currentDashboard.tasks) : [];
   const dueSoonTasks = currentDashboard ? getDueSoonTasks(currentDashboard.tasks) : [];
-  const displayName =
-    [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() ||
-    user?.email ||
-    'Admiino user';
   const quickAccess = [
     ...(canCreateTasks
       ? [{ title: 'Create Task', route: '/task-create' as const, Icon: Plus }]
@@ -226,8 +221,9 @@ export function HomeScreen() {
   }
 
   return (
-    <AppScreen padding="md">
+    <AppScreen edges={['right', 'bottom', 'left']} padding="md">
       <View {...edgeSwipeResponder.panHandlers} style={{ flex: 1 }}>
+        <MainAppHeader onProfilePress={() => setDrawerVisible(true)} />
         <ScrollView
           contentContainerStyle={{
             width: '100%',
@@ -248,52 +244,9 @@ export function HomeScreen() {
           showsVerticalScrollIndicator={false}
           testID="home-scroll-view"
         >
-          <View style={{ gap: themeTokens.spacing.xs }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Pressable
-                accessibilityLabel="Open profile and navigation menu"
-                accessibilityRole="button"
-                onPress={() => setDrawerVisible(true)}
-                style={{ minWidth: 48, minHeight: 48, justifyContent: 'center' }}
-              >
-                <UserAvatar imageUrl={user?.profilePictureUrl} name={displayName} size={40} />
-              </Pressable>
-              <AppText
-                accessibilityRole="header"
-                style={{ flex: 1, textAlign: 'center' }}
-                variant="label"
-              >
-                Admiino
-              </AppText>
-              <IconButton
-                accessibilityLabel="Open Global Search"
-                icon={<Search color={colors.text} size={22} />}
-                onPress={() => router.push('/search')}
-              />
-            </View>
-            <View style={{ gap: themeTokens.spacing.xxs }}>
-              <AppText accessibilityRole="header" variant="heading">
-                Hello, {firstName(user?.firstName)}
-              </AppText>
-              <Pressable
-                accessibilityLabel={`Switch workspace from ${activeWorkspace?.company.name ?? 'current workspace'}`}
-                accessibilityRole="button"
-                onPress={() => router.push('/workspace-select')}
-                style={{
-                  minHeight: 40,
-                  alignSelf: 'flex-start',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: themeTokens.spacing.xs,
-                }}
-              >
-                <AppText numberOfLines={1} tone="link" variant="label">
-                  {activeWorkspace?.company.name ?? 'Choose workspace'}
-                </AppText>
-                <ChevronDown color={colors.primaryAction} size={16} />
-              </Pressable>
-            </View>
-          </View>
+          <AppText accessibilityRole="header" variant="heading">
+            Hello, {firstName(user?.firstName)}
+          </AppText>
 
           {errorMessage && (
             <InlineError
@@ -482,14 +435,18 @@ export function HomeScreen() {
           activeDestination="Home"
           onClose={() => setDrawerVisible(false)}
           onNavigate={(route) => router.push(route)}
+          onSwitchWorkspace={() => setSwitcherVisible(true)}
           onSignOut={async () => {
             await logout();
             router.replace('/sign-in');
           }}
-          onSwitchWorkspace={() => router.push('/workspace-select')}
           user={user}
           visible={drawerVisible}
           workspace={activeWorkspace}
+        />
+        <QuickWorkspaceSwitcher
+          onClose={() => setSwitcherVisible(false)}
+          visible={switcherVisible}
         />
       </View>
     </AppScreen>

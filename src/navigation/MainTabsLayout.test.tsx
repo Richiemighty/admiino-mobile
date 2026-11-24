@@ -31,7 +31,7 @@ describe('P10 main tab structure', () => {
       'tab-screen-index',
       'tab-screen-tasks',
       'tab-screen-projects',
-      'tab-screen-inbox',
+      'tab-screen-calendar',
       'tab-screen-more',
     ]);
   });

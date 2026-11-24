@@ -12,6 +12,7 @@ import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
+import { MainAppHeader } from '../../components/navigation/MainAppHeader';
 import {
   AppButton,
   AppCard,
@@ -687,120 +688,137 @@ function InboxContent({
 
   if (activeCategory === 'requests') {
     return (
-      <AppScreen padding="md">
-        <View style={{ width: '100%', maxWidth: 720, alignSelf: 'center', gap: 12 }}>
-          {header}
-          <AppCard padding="md" style={{ gap: 8 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <ShieldCheck color={colors.primaryAction} size={20} />
-              <AppText variant="label">Workspace approvals</AppText>
-            </View>
-            <AppText tone="secondary" variant="caption">
-              {role === 'manager'
-                ? 'Review pending permission requests for this workspace.'
-                : 'Review pending join requests, member verifications, and permission requests.'}
-            </AppText>
-            <AppButton
-              accessibilityLabel="Open workspace approvals"
-              icon={<ChevronRight color={colors.onPrimary} size={17} />}
-              onPress={() => router.push('/approvals')}
-              style={{ alignSelf: 'flex-start' }}
-            >
-              Open approvals
-            </AppButton>
-          </AppCard>
+      <AppScreen edges={['right', 'bottom', 'left']} padding="md">
+        <MainAppHeader />
+        <View style={{ flex: 1, padding: themeTokens.spacing.md }}>
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 720,
+              alignSelf: 'center',
+              gap: 12,
+              flex: 1,
+              paddingHorizontal: themeTokens.spacing.md,
+            }}
+          >
+            <View style={{ marginHorizontal: -themeTokens.spacing.md }}>{header}</View>
+            <AppCard padding="md" style={{ gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ShieldCheck color={colors.primaryAction} size={20} />
+                <AppText variant="label">Workspace approvals</AppText>
+              </View>
+              <AppText tone="secondary" variant="caption">
+                {role === 'manager'
+                  ? 'Review pending permission requests for this workspace.'
+                  : 'Review pending join requests, member verifications, and permission requests.'}
+              </AppText>
+              <AppButton
+                accessibilityLabel="Open workspace approvals"
+                icon={<ChevronRight color={colors.onPrimary} size={17} />}
+                onPress={() => router.push('/approvals')}
+                style={{ alignSelf: 'flex-start' }}
+              >
+                Open approvals
+              </AppButton>
+            </AppCard>
+          </View>
         </View>
       </AppScreen>
     );
   }
 
   return (
-    <AppScreen padding="md">
-      <FlatList
-        contentContainerStyle={{
-          width: '100%',
-          maxWidth: 720,
-          alignSelf: 'center',
-          paddingBottom: themeTokens.spacing.lg,
-        }}
-        data={rows}
-        keyExtractor={(item) => item.key}
-        onEndReached={() => void loadMore()}
-        onEndReachedThreshold={0.45}
-        refreshControl={
-          <RefreshControl
-            onRefresh={refresh}
-            refreshing={refreshing}
-            tintColor={colors.primaryAction}
-            colors={[colors.primaryAction]}
-          />
-        }
-        renderItem={({ item }) =>
-          item.kind === 'heading' ? (
-            <AppText
-              accessibilityRole="header"
-              style={{ marginTop: themeTokens.spacing.sm, marginBottom: 4 }}
-              tone="secondary"
-              variant="caption"
-            >
-              {item.label}
-            </AppText>
-          ) : (
-            <NotificationRow
-              markingRead={markingReadIds.has(item.notification.id)}
-              notification={item.notification}
-              onMarkRead={() => void markRead(item.notification)}
-              onOpen={() => void openNotification(item.notification)}
-              opening={openingId === item.notification.id}
+    <AppScreen edges={['right', 'bottom', 'left']} padding="md">
+      <MainAppHeader />
+      <View style={{ flex: 1, paddingHorizontal: themeTokens.spacing.md }}>
+        <FlatList
+          contentContainerStyle={{
+            width: '100%',
+            maxWidth: 720,
+            alignSelf: 'center',
+            paddingBottom: themeTokens.spacing.lg,
+          }}
+          data={rows}
+          keyExtractor={(item) => item.key}
+          onEndReached={() => void loadMore()}
+          onEndReachedThreshold={0.45}
+          refreshControl={
+            <RefreshControl
+              onRefresh={refresh}
+              refreshing={refreshing}
+              tintColor={colors.primaryAction}
+              colors={[colors.primaryAction]}
             />
-          )
-        }
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={header}
-        ListEmptyComponent={
-          loading ? (
-            <LoadingState label="Loading notifications" />
-          ) : error ? (
-            <View style={{ gap: 10, paddingVertical: themeTokens.spacing.md }}>
-              <InlineError message={error} />
-              <AppButton
-                accessibilityLabel="Retry loading notifications"
-                onPress={refresh}
-                variant="outline"
+          }
+          renderItem={({ item }) =>
+            item.kind === 'heading' ? (
+              <AppText
+                accessibilityRole="header"
+                style={{ marginTop: themeTokens.spacing.sm, marginBottom: 4 }}
+                tone="secondary"
+                variant="caption"
               >
-                Try again
+                {item.label}
+              </AppText>
+            ) : (
+              <NotificationRow
+                markingRead={markingReadIds.has(item.notification.id)}
+                notification={item.notification}
+                onMarkRead={() => void markRead(item.notification)}
+                onOpen={() => void openNotification(item.notification)}
+                opening={openingId === item.notification.id}
+              />
+            )
+          }
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={header}
+          ListEmptyComponent={
+            loading ? (
+              <LoadingState label="Loading notifications" />
+            ) : error ? (
+              <View style={{ gap: 10, paddingVertical: themeTokens.spacing.md }}>
+                <InlineError message={error} />
+                <AppButton
+                  accessibilityLabel="Retry loading notifications"
+                  onPress={refresh}
+                  variant="outline"
+                >
+                  Try again
+                </AppButton>
+              </View>
+            ) : (
+              <View
+                style={{ alignItems: 'center', gap: 6, paddingVertical: themeTokens.spacing.xl }}
+              >
+                <Bell color={colors.textMuted} size={26} />
+                <AppText variant="label">
+                  {filter === 'unread' ? 'No unread notifications' : 'Your Inbox is clear'}
+                </AppText>
+                <AppText style={{ textAlign: 'center' }} tone="secondary" variant="caption">
+                  {filter === 'unread'
+                    ? 'You are all caught up on unread updates.'
+                    : 'Task, project, and workspace updates will appear here.'}
+                </AppText>
+              </View>
+            )
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: themeTokens.spacing.md }}>
+                <LoadingState label="Loading more notifications" />
+              </View>
+            ) : currentPage?.hasMore ? (
+              <AppButton
+                accessibilityLabel="Load more notifications"
+                onPress={() => void loadMore()}
+                variant="ghost"
+              >
+                Load more
               </AppButton>
-            </View>
-          ) : (
-            <View style={{ alignItems: 'center', gap: 6, paddingVertical: themeTokens.spacing.xl }}>
-              <Bell color={colors.textMuted} size={26} />
-              <AppText variant="label">
-                {filter === 'unread' ? 'No unread notifications' : 'Your Inbox is clear'}
-              </AppText>
-              <AppText style={{ textAlign: 'center' }} tone="secondary" variant="caption">
-                {filter === 'unread'
-                  ? 'You are all caught up on unread updates.'
-                  : 'Task, project, and workspace updates will appear here.'}
-              </AppText>
-            </View>
-          )
-        }
-        ListFooterComponent={
-          loadingMore ? (
-            <View style={{ paddingVertical: themeTokens.spacing.md }}>
-              <LoadingState label="Loading more notifications" />
-            </View>
-          ) : currentPage?.hasMore ? (
-            <AppButton
-              accessibilityLabel="Load more notifications"
-              onPress={() => void loadMore()}
-              variant="ghost"
-            >
-              Load more
-            </AppButton>
-          ) : undefined
-        }
-      />
+            ) : undefined
+          }
+        />
+      </View>
     </AppScreen>
   );
 }

@@ -450,7 +450,22 @@ export function ProjectDetailsScreen({
           <View style={{ gap: themeTokens.spacing.md }}>
             <AppCard padding="md" style={{ gap: themeTokens.spacing.sm, borderWidth: 0 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <FolderKanban color={colors.primaryAction} size={18} />
+                <View
+                  accessibilityLabel={`Project icon for ${project.name}`}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: themeTokens.radius.sm,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor:
+                      project.color && /^#[0-9a-f]{6}$/i.test(project.color)
+                        ? project.color
+                        : colors.primaryAction,
+                  }}
+                >
+                  <FolderKanban color="#FFFFFF" size={20} />
+                </View>
                 <AppText accessibilityRole="header" variant="label">
                   Project overview
                 </AppText>

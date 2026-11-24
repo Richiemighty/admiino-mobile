@@ -821,7 +821,11 @@ export function TaskDetailsScreen({
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 {assignedPeople.slice(0, 3).map((person, index) => (
                   <View key={person.id} style={{ marginLeft: index === 0 ? 0 : -8 }}>
-                    <UserAvatar name={personName(person)} size={34} />
+                    <UserAvatar
+                      imageUrl={person.profilePictureUrl}
+                      name={personName(person)}
+                      size={34}
+                    />
                   </View>
                 ))}
                 {assignedPeople.length > 3 && (
@@ -1106,7 +1110,11 @@ export function TaskDetailsScreen({
                   gap: themeTokens.spacing.sm,
                 }}
               >
-                <UserAvatar name={personName(person)} size={36} />
+                <UserAvatar
+                  imageUrl={person.profilePictureUrl}
+                  name={personName(person)}
+                  size={36}
+                />
                 <AppText variant="label">{personName(person)}</AppText>
               </View>
             ))}

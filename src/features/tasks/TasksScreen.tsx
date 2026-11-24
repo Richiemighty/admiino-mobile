@@ -1,17 +1,11 @@
 import { router, useFocusEffect } from 'expo-router';
-import {
-  ChevronDown,
-  ChevronRight,
-  ListTodo,
-  Search,
-  SlidersHorizontal,
-  X,
-} from 'lucide-react-native';
+import { ChevronDown, Ellipsis, ListTodo, Search, SlidersHorizontal, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
+import { MainAppHeader } from '../../components/navigation/MainAppHeader';
 import {
   AppButton,
   AppCard,
@@ -20,6 +14,7 @@ import {
   BottomSheet,
   InlineError,
   LoadingState,
+  UserAvatar,
 } from '../../components/ui';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
@@ -94,10 +89,20 @@ function FilterChip({
   );
 }
 
-function TaskCard({ task }: { task: TaskListItem }) {
+function TaskCard({
+  task,
+  onActions,
+}: {
+  task: TaskListItem;
+  onActions: (task: TaskListItem) => void;
+}) {
   const { colors } = useAppTheme();
   const dueLabel = getDueDateLabel(task.deadline);
   const related = task.project?.name ?? task.team?.name ?? null;
+  const assignees =
+    task.assignees && task.assignees.length ? task.assignees : task.assignee ? [task.assignee] : [];
+  const assigneeName = (person: NonNullable<typeof assignees>[number]) =>
+    [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || 'Assignee';
 
   return (
     <AppCard
@@ -123,7 +128,19 @@ function TaskCard({ task }: { task: TaskListItem }) {
             </AppText>
           </View>
         </View>
-        <ChevronRight color={colors.textMuted} size={18} />
+        <Pressable
+          accessibilityLabel={`Task actions for ${task.title}`}
+          accessibilityRole="button"
+          onPress={() => onActions(task)}
+          style={{
+            width: themeTokens.touchTarget.minimum,
+            height: themeTokens.touchTarget.minimum,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ellipsis color={colors.textMuted} size={20} />
+        </Pressable>
       </View>
       {dueLabel && (
         <AppText
@@ -132,6 +149,28 @@ function TaskCard({ task }: { task: TaskListItem }) {
           variant="caption"
         >
           {dueLabel}
+        </AppText>
+      )}
+      {assignees.length > 0 ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {assignees.slice(0, 3).map((person, index) => (
+            <View key={person.id} style={{ marginLeft: index === 0 ? 0 : -7 }}>
+              <UserAvatar
+                imageUrl={person.profilePictureUrl}
+                name={assigneeName(person)}
+                size={28}
+              />
+            </View>
+          ))}
+          {assignees.length > 3 ? (
+            <AppText tone="secondary" variant="caption" style={{ marginLeft: 6 }}>
+              +{assignees.length - 3}
+            </AppText>
+          ) : null}
+        </View>
+      ) : (
+        <AppText tone="secondary" variant="caption">
+          Unassigned
         </AppText>
       )}
       {related ? (
@@ -157,6 +196,7 @@ function TasksScreenContent() {
   const [draftStatus, setDraftStatus] = useState<StatusFilter>('');
   const [draftPriority, setDraftPriority] = useState<PriorityFilter>('');
   const [filtersVisible, setFiltersVisible] = useState(false);
+  const [actionTask, setActionTask] = useState<TaskListItem | null>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [pageData, setPageData] = useState<ScopedTaskPage | null>(null);
@@ -336,254 +376,294 @@ function TasksScreenContent() {
           : 'There are no tasks in this workspace.';
 
   return (
-    <AppScreen padding="md">
-      <FlatList
-        contentContainerStyle={{
-          width: '100%',
-          maxWidth: 720,
-          alignSelf: 'center',
-          gap: themeTokens.spacing.xs,
-          paddingBottom: themeTokens.spacing.lg,
-        }}
-        data={currentPage?.tasks ?? []}
-        keyExtractor={(task) => task.id}
-        keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          <View style={{ gap: themeTokens.spacing.sm, marginBottom: themeTokens.spacing.xs }}>
-            <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center' }}>
-              <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
-                Tasks
-              </AppText>
-              {canCreateTasks && (
-                <AppButton
-                  accessibilityLabel="Create task"
-                  icon={<ListTodo color={colors.onPrimary} size={16} />}
-                  onPress={() => router.push('/task-create')}
-                  style={{ minHeight: 40, minWidth: 104 }}
-                  variant="primary"
-                >
-                  + Create
-                </AppButton>
-              )}
-            </View>
+    <AppScreen edges={['right', 'bottom', 'left']} padding="md">
+      <MainAppHeader />
+      <View style={{ paddingHorizontal: themeTokens.spacing.md, flex: 1 }}>
+        <FlatList
+          contentContainerStyle={{
+            width: '100%',
+            maxWidth: 720,
+            alignSelf: 'center',
+            gap: themeTokens.spacing.xs,
+            paddingBottom: themeTokens.spacing.lg,
+          }}
+          data={currentPage?.tasks ?? []}
+          keyExtractor={(task) => task.id}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={
+            <View style={{ gap: themeTokens.spacing.sm, marginBottom: themeTokens.spacing.xs }}>
+              <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center' }}>
+                <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
+                  Tasks
+                </AppText>
+                {canCreateTasks && (
+                  <AppButton
+                    accessibilityLabel="Create task"
+                    icon={<ListTodo color={colors.onPrimary} size={16} />}
+                    onPress={() => router.push('/task-create')}
+                    style={{ minHeight: 40, minWidth: 104 }}
+                    variant="primary"
+                  >
+                    + Create
+                  </AppButton>
+                )}
+              </View>
 
-            <View
-              accessibilityRole="tablist"
-              style={{ flexDirection: 'row', gap: themeTokens.spacing.xxs }}
-            >
-              {views.map((view) => (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: activeRelation === view.value }}
-                  key={view.value}
-                  onPress={() => setRelation(view.value)}
+              <View
+                accessibilityRole="tablist"
+                style={{ flexDirection: 'row', gap: themeTokens.spacing.xxs }}
+              >
+                {views.map((view) => (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: activeRelation === view.value }}
+                    key={view.value}
+                    onPress={() => setRelation(view.value)}
+                    style={{
+                      flex: 1,
+                      minHeight: 40,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      paddingHorizontal: 2,
+                      borderBottomWidth: activeRelation === view.value ? 2 : 1,
+                      borderBottomColor:
+                        activeRelation === view.value ? colors.primaryAction : colors.border,
+                    }}
+                  >
+                    <AppText
+                      numberOfLines={1}
+                      tone={activeRelation === view.value ? 'link' : 'secondary'}
+                      variant="caption"
+                    >
+                      {view.label}
+                    </AppText>
+                  </Pressable>
+                ))}
+              </View>
+
+              <View
+                style={{
+                  minHeight: 44,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: themeTokens.radius.md,
+                  paddingLeft: themeTokens.spacing.sm,
+                  backgroundColor: colors.surface,
+                }}
+              >
+                <Search color={colors.textMuted} size={18} />
+                <TextInput
+                  accessibilityLabel="Search tasks"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={100}
+                  onChangeText={setQuery}
+                  placeholder="Search tasks"
+                  placeholderTextColor={colors.textMuted}
+                  returnKeyType="search"
                   style={{
                     flex: 1,
-                    minHeight: 40,
+                    minHeight: 42,
+                    color: colors.text,
+                    paddingHorizontal: themeTokens.spacing.sm,
+                    fontSize: 16,
+                  }}
+                  testID="task-search-input"
+                  value={query}
+                />
+                {query.length > 0 && (
+                  <Pressable
+                    accessibilityLabel="Clear task search"
+                    accessibilityRole="button"
+                    onPress={() => setQuery('')}
+                    style={{
+                      minWidth: 42,
+                      minHeight: 42,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <X color={colors.textMuted} size={18} />
+                  </Pressable>
+                )}
+              </View>
+
+              <View
+                style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.xs }}
+              >
+                <Pressable
+                  accessibilityLabel={`Status: ${statusFilter ? labelFor(statusFilter) : 'Any'}`}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setDraftStatus(statusFilter);
+                    setDraftPriority(priorityFilter);
+                    setFiltersVisible(true);
+                  }}
+                  style={{
+                    minHeight: 36,
+                    flexDirection: 'row',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    paddingHorizontal: 2,
-                    borderBottomWidth: activeRelation === view.value ? 2 : 1,
-                    borderBottomColor:
-                      activeRelation === view.value ? colors.primaryAction : colors.border,
+                    gap: 4,
+                    paddingHorizontal: themeTokens.spacing.sm,
+                    borderRadius: themeTokens.radius.pill,
+                    backgroundColor: colors.surfaceSubtle,
                   }}
                 >
-                  <AppText
-                    numberOfLines={1}
-                    tone={activeRelation === view.value ? 'link' : 'secondary'}
-                    variant="caption"
-                  >
-                    {view.label}
+                  <AppText numberOfLines={1} variant="caption">
+                    {statusFilter ? labelFor(statusFilter) : 'Any status'}
+                  </AppText>
+                  <ChevronDown color={colors.textMuted} size={14} />
+                </Pressable>
+                <Pressable
+                  accessibilityLabel={`Priority: ${priorityFilter ? labelFor(priorityFilter) : 'Any'}`}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setDraftStatus(statusFilter);
+                    setDraftPriority(priorityFilter);
+                    setFiltersVisible(true);
+                  }}
+                  style={{
+                    minHeight: 36,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingHorizontal: themeTokens.spacing.sm,
+                    borderRadius: themeTokens.radius.pill,
+                    backgroundColor: colors.surfaceSubtle,
+                  }}
+                >
+                  <AppText numberOfLines={1} variant="caption">
+                    {priorityFilter ? labelFor(priorityFilter) : 'Any priority'}
+                  </AppText>
+                  <ChevronDown color={colors.textMuted} size={14} />
+                </Pressable>
+                <Pressable
+                  accessibilityLabel={`Filters${activeFilterCount ? `, ${activeFilterCount} active` : ''}`}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setDraftStatus(statusFilter);
+                    setDraftPriority(priorityFilter);
+                    setFiltersVisible(true);
+                  }}
+                  style={{
+                    minHeight: 40,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingHorizontal: themeTokens.spacing.xs,
+                  }}
+                >
+                  <SlidersHorizontal color={colors.primaryAction} size={17} />
+                  <AppText tone="link" variant="caption">
+                    Filters{activeFilterCount ? ` ${activeFilterCount}` : ''}
                   </AppText>
                 </Pressable>
-              ))}
-            </View>
+              </View>
 
-            <View
-              style={{
-                minHeight: 44,
-                flexDirection: 'row',
-                alignItems: 'center',
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: themeTokens.radius.md,
-                paddingLeft: themeTokens.spacing.sm,
-                backgroundColor: colors.surface,
-              }}
-            >
-              <Search color={colors.textMuted} size={18} />
-              <TextInput
-                accessibilityLabel="Search tasks"
-                autoCapitalize="none"
-                autoCorrect={false}
-                maxLength={100}
-                onChangeText={setQuery}
-                placeholder="Search tasks"
-                placeholderTextColor={colors.textMuted}
-                returnKeyType="search"
-                style={{
-                  flex: 1,
-                  minHeight: 42,
-                  color: colors.text,
-                  paddingHorizontal: themeTokens.spacing.sm,
-                  fontSize: 16,
-                }}
-                testID="task-search-input"
-                value={query}
-              />
-              {query.length > 0 && (
-                <Pressable
-                  accessibilityLabel="Clear task search"
-                  accessibilityRole="button"
-                  onPress={() => setQuery('')}
-                  style={{
-                    minWidth: 42,
-                    minHeight: 42,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <X color={colors.textMuted} size={18} />
-                </Pressable>
+              <AppText tone="secondary" variant="caption">
+                {currentPage
+                  ? `${currentPage.total} ${currentPage.total === 1 ? 'task' : 'tasks'}`
+                  : 'Tasks'}
+              </AppText>
+              {error && (
+                <InlineError
+                  message={error}
+                  onRetry={() => setRetry((value) => value + 1)}
+                  retryLabel="Retry loading tasks"
+                />
               )}
+              {loading && !currentPage ? <LoadingState label="Loading tasks" /> : null}
             </View>
-
-            <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.xs }}
-            >
-              <Pressable
-                accessibilityLabel={`Status: ${statusFilter ? labelFor(statusFilter) : 'Any'}`}
-                accessibilityRole="button"
-                onPress={() => {
-                  setDraftStatus(statusFilter);
-                  setDraftPriority(priorityFilter);
-                  setFiltersVisible(true);
-                }}
-                style={{
-                  minHeight: 36,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  paddingHorizontal: themeTokens.spacing.sm,
-                  borderRadius: themeTokens.radius.pill,
-                  backgroundColor: colors.surfaceSubtle,
-                }}
+          }
+          ListEmptyComponent={
+            !loading && !error && currentPage ? (
+              <View
+                style={{ alignItems: 'center', gap: themeTokens.spacing.xs, paddingVertical: 24 }}
               >
-                <AppText numberOfLines={1} variant="caption">
-                  {statusFilter ? labelFor(statusFilter) : 'Any status'}
+                <AppText variant="label">No tasks found</AppText>
+                <AppText style={{ textAlign: 'center' }} tone="secondary">
+                  {emptyLabel}
                 </AppText>
-                <ChevronDown color={colors.textMuted} size={14} />
-              </Pressable>
-              <Pressable
-                accessibilityLabel={`Priority: ${priorityFilter ? labelFor(priorityFilter) : 'Any'}`}
-                accessibilityRole="button"
+              </View>
+            ) : undefined
+          }
+          ListFooterComponent={
+            currentPage && currentPage.tasks.length > 0 ? (
+              <View style={{ gap: themeTokens.spacing.xs, paddingTop: themeTokens.spacing.sm }}>
+                {currentPage.tasks.length < currentPage.total && (
+                  <AppButton
+                    accessibilityLabel="Load more tasks"
+                    loading={loadingMore}
+                    onPress={() => void loadMore()}
+                    variant="outline"
+                  >
+                    Load more
+                  </AppButton>
+                )}
+                <AppText
+                  accessibilityLiveRegion="polite"
+                  style={{ textAlign: 'center' }}
+                  tone="subtle"
+                  variant="caption"
+                >
+                  Showing {currentPage.tasks.length} of {currentPage.total} tasks
+                </AppText>
+              </View>
+            ) : undefined
+          }
+          refreshControl={
+            <RefreshControl
+              colors={[colors.primaryAction]}
+              onRefresh={() => setRetry((value) => value + 1)}
+              refreshing={loading && Boolean(currentPage)}
+              tintColor={colors.primaryAction}
+            />
+          }
+          renderItem={({ item }) => (
+            <TaskCard task={item} onActions={(selected) => setActionTask(selected)} />
+          )}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          testID="tasks-list"
+        />
+      </View>
+      <BottomSheet
+        onClose={() => setActionTask(null)}
+        testID="task-actions-sheet"
+        title={actionTask?.title ?? 'Task actions'}
+        visible={Boolean(actionTask)}
+      >
+        {actionTask ? (
+          <View style={{ gap: themeTokens.spacing.sm, paddingBottom: themeTokens.spacing.sm }}>
+            {actionTask.access?.canEdit ? (
+              <AppButton
+                accessibilityLabel="Change task status"
                 onPress={() => {
-                  setDraftStatus(statusFilter);
-                  setDraftPriority(priorityFilter);
-                  setFiltersVisible(true);
+                  setActionTask(null);
+                  router.push(`/tasks/${encodeURIComponent(actionTask.id)}`);
                 }}
-                style={{
-                  minHeight: 36,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  paddingHorizontal: themeTokens.spacing.sm,
-                  borderRadius: themeTokens.radius.pill,
-                  backgroundColor: colors.surfaceSubtle,
-                }}
+                variant="outline"
               >
-                <AppText numberOfLines={1} variant="caption">
-                  {priorityFilter ? labelFor(priorityFilter) : 'Any priority'}
-                </AppText>
-                <ChevronDown color={colors.textMuted} size={14} />
-              </Pressable>
-              <Pressable
-                accessibilityLabel={`Filters${activeFilterCount ? `, ${activeFilterCount} active` : ''}`}
-                accessibilityRole="button"
+                Change status
+              </AppButton>
+            ) : null}
+            {actionTask.access?.canEdit && !actionTask.access.readOnly ? (
+              <AppButton
+                accessibilityLabel="Edit task"
                 onPress={() => {
-                  setDraftStatus(statusFilter);
-                  setDraftPriority(priorityFilter);
-                  setFiltersVisible(true);
+                  setActionTask(null);
+                  router.push(`/task-edit/${encodeURIComponent(actionTask.id)}`);
                 }}
-                style={{
-                  minHeight: 40,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  paddingHorizontal: themeTokens.spacing.xs,
-                }}
+                variant="outline"
               >
-                <SlidersHorizontal color={colors.primaryAction} size={17} />
-                <AppText tone="link" variant="caption">
-                  Filters{activeFilterCount ? ` ${activeFilterCount}` : ''}
-                </AppText>
-              </Pressable>
-            </View>
-
-            <AppText tone="secondary" variant="caption">
-              {currentPage
-                ? `${currentPage.total} ${currentPage.total === 1 ? 'task' : 'tasks'}`
-                : 'Tasks'}
-            </AppText>
-            {error && (
-              <InlineError
-                message={error}
-                onRetry={() => setRetry((value) => value + 1)}
-                retryLabel="Retry loading tasks"
-              />
-            )}
-            {loading && !currentPage ? <LoadingState label="Loading tasks" /> : null}
+                Edit task
+              </AppButton>
+            ) : null}
           </View>
-        }
-        ListEmptyComponent={
-          !loading && !error && currentPage ? (
-            <View
-              style={{ alignItems: 'center', gap: themeTokens.spacing.xs, paddingVertical: 24 }}
-            >
-              <AppText variant="label">No tasks found</AppText>
-              <AppText style={{ textAlign: 'center' }} tone="secondary">
-                {emptyLabel}
-              </AppText>
-            </View>
-          ) : undefined
-        }
-        ListFooterComponent={
-          currentPage && currentPage.tasks.length > 0 ? (
-            <View style={{ gap: themeTokens.spacing.xs, paddingTop: themeTokens.spacing.sm }}>
-              {currentPage.tasks.length < currentPage.total && (
-                <AppButton
-                  accessibilityLabel="Load more tasks"
-                  loading={loadingMore}
-                  onPress={() => void loadMore()}
-                  variant="outline"
-                >
-                  Load more
-                </AppButton>
-              )}
-              <AppText
-                accessibilityLiveRegion="polite"
-                style={{ textAlign: 'center' }}
-                tone="subtle"
-                variant="caption"
-              >
-                Showing {currentPage.tasks.length} of {currentPage.total} tasks
-              </AppText>
-            </View>
-          ) : undefined
-        }
-        refreshControl={
-          <RefreshControl
-            colors={[colors.primaryAction]}
-            onRefresh={() => setRetry((value) => value + 1)}
-            refreshing={loading && Boolean(currentPage)}
-            tintColor={colors.primaryAction}
-          />
-        }
-        renderItem={({ item }) => <TaskCard task={item} />}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        testID="tasks-list"
-      />
+        ) : null}
+      </BottomSheet>
       <BottomSheet
         footer={
           <View

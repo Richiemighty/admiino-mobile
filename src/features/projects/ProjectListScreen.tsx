@@ -13,6 +13,7 @@ import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-nati
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
+import { MainAppHeader } from '../../components/navigation/MainAppHeader';
 import {
   AppButton,
   AppCard,
@@ -69,6 +70,8 @@ function ProjectCard({ project }: { project: ProjectRecord }) {
   const { colors } = useAppTheme();
   const dueDate = dateLabel(project.dueDate ?? project.endDate);
   const teamName = project.team?.name;
+  const projectColor =
+    project.color && /^#[0-9a-f]{6}$/i.test(project.color) ? project.color : colors.primaryAction;
   return (
     <AppCard
       accessibilityLabel={`Open project ${project.name}`}
@@ -77,6 +80,19 @@ function ProjectCard({ project }: { project: ProjectRecord }) {
       style={{ gap: themeTokens.spacing.xxs, borderWidth: 0 }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
+        <View
+          accessibilityLabel={`Project icon for ${project.name}`}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: themeTokens.radius.sm,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: projectColor,
+          }}
+        >
+          <FolderKanban color="#FFFFFF" size={20} />
+        </View>
         <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
           <AppText numberOfLines={2} variant="label">
             {project.name}
@@ -287,229 +303,232 @@ export function ProjectListScreen() {
         : 'No projects yet';
 
   return (
-    <AppScreen padding="md">
-      <FlatList
-        contentContainerStyle={{
-          width: '100%',
-          maxWidth: 720,
-          alignSelf: 'center',
-          gap: themeTokens.spacing.xs,
-          paddingBottom: themeTokens.spacing.lg,
-        }}
-        data={filteredProjects}
-        keyExtractor={(project) => project.id}
-        keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          <View style={{ gap: themeTokens.spacing.sm, marginBottom: themeTokens.spacing.xs }}>
-            <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center' }}>
-              <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
-                Projects
-              </AppText>
-              {showCreate && (
-                <AppButton
-                  accessibilityLabel="Create project"
-                  icon={<FolderKanban color={colors.onPrimary} size={16} />}
-                  onPress={() => router.push('/project-create')}
-                  style={{ minHeight: 40, minWidth: 112 }}
-                >
-                  + Create
-                </AppButton>
+    <AppScreen edges={['right', 'bottom', 'left']} padding="md">
+      <MainAppHeader />
+      <View style={{ paddingHorizontal: themeTokens.spacing.md, flex: 1 }}>
+        <FlatList
+          contentContainerStyle={{
+            width: '100%',
+            maxWidth: 720,
+            alignSelf: 'center',
+            gap: themeTokens.spacing.xs,
+            paddingBottom: themeTokens.spacing.lg,
+          }}
+          data={filteredProjects}
+          keyExtractor={(project) => project.id}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={
+            <View style={{ gap: themeTokens.spacing.sm, marginBottom: themeTokens.spacing.xs }}>
+              <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center' }}>
+                <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
+                  Projects
+                </AppText>
+                {showCreate && (
+                  <AppButton
+                    accessibilityLabel="Create project"
+                    icon={<FolderKanban color={colors.onPrimary} size={16} />}
+                    onPress={() => router.push('/project-create')}
+                    style={{ minHeight: 40, minWidth: 112 }}
+                  >
+                    + Create
+                  </AppButton>
+                )}
+              </View>
+              {canViewAllProjects && (
+                <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 4 }}>
+                  {[
+                    { value: 'all' as const, label: 'All projects' },
+                    { value: 'mine' as const, label: 'My projects' },
+                  ].map((item) => (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: scope === item.value }}
+                      key={item.value}
+                      onPress={() => setSelectedScope(item.value)}
+                      style={{
+                        flex: 1,
+                        minHeight: 40,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderBottomWidth: scope === item.value ? 2 : 1,
+                        borderBottomColor:
+                          scope === item.value ? colors.primaryAction : colors.border,
+                      }}
+                    >
+                      <AppText tone={scope === item.value ? 'link' : 'secondary'} variant="caption">
+                        {item.label}
+                      </AppText>
+                    </Pressable>
+                  ))}
+                </View>
               )}
-            </View>
-            {canViewAllProjects && (
-              <View accessibilityRole="tablist" style={{ flexDirection: 'row', gap: 4 }}>
-                {[
-                  { value: 'all' as const, label: 'All projects' },
-                  { value: 'mine' as const, label: 'My projects' },
-                ].map((item) => (
+              <View
+                style={{
+                  minHeight: 44,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: themeTokens.radius.md,
+                  paddingLeft: themeTokens.spacing.sm,
+                  backgroundColor: colors.surface,
+                }}
+              >
+                <Search color={colors.textMuted} size={18} />
+                <TextInput
+                  accessibilityLabel="Search projects"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={100}
+                  onChangeText={setQuery}
+                  placeholder="Search projects"
+                  placeholderTextColor={colors.textMuted}
+                  returnKeyType="search"
+                  style={{
+                    flex: 1,
+                    minHeight: 42,
+                    color: colors.text,
+                    paddingHorizontal: themeTokens.spacing.sm,
+                    fontSize: 16,
+                  }}
+                  value={query}
+                />
+                {query.length > 0 && (
                   <Pressable
+                    accessibilityLabel="Clear project search"
                     accessibilityRole="button"
-                    accessibilityState={{ selected: scope === item.value }}
-                    key={item.value}
-                    onPress={() => setSelectedScope(item.value)}
+                    onPress={() => setQuery('')}
                     style={{
-                      flex: 1,
-                      minHeight: 40,
+                      minWidth: 42,
+                      minHeight: 42,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      borderBottomWidth: scope === item.value ? 2 : 1,
-                      borderBottomColor:
-                        scope === item.value ? colors.primaryAction : colors.border,
                     }}
                   >
-                    <AppText tone={scope === item.value ? 'link' : 'secondary'} variant="caption">
-                      {item.label}
-                    </AppText>
+                    <X color={colors.textMuted} size={18} />
                   </Pressable>
-                ))}
+                )}
               </View>
-            )}
-            <View
-              style={{
-                minHeight: 44,
-                flexDirection: 'row',
-                alignItems: 'center',
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: themeTokens.radius.md,
-                paddingLeft: themeTokens.spacing.sm,
-                backgroundColor: colors.surface,
-              }}
-            >
-              <Search color={colors.textMuted} size={18} />
-              <TextInput
-                accessibilityLabel="Search projects"
-                autoCapitalize="none"
-                autoCorrect={false}
-                maxLength={100}
-                onChangeText={setQuery}
-                placeholder="Search projects"
-                placeholderTextColor={colors.textMuted}
-                returnKeyType="search"
+              <Pressable
+                accessibilityLabel={`Filter projects, ${statusFilterLabel}`}
+                accessibilityRole="button"
+                onPress={() => setFiltersVisible(true)}
                 style={{
-                  flex: 1,
-                  minHeight: 42,
-                  color: colors.text,
+                  alignSelf: 'flex-start',
+                  minHeight: 38,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: themeTokens.spacing.xs,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: themeTokens.radius.pill,
                   paddingHorizontal: themeTokens.spacing.sm,
-                  fontSize: 16,
+                  backgroundColor: colors.surface,
                 }}
-                value={query}
-              />
-              {query.length > 0 && (
-                <Pressable
-                  accessibilityLabel="Clear project search"
-                  accessibilityRole="button"
-                  onPress={() => setQuery('')}
-                  style={{
-                    minWidth: 42,
-                    minHeight: 42,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <X color={colors.textMuted} size={18} />
-                </Pressable>
+              >
+                <SlidersHorizontal color={colors.primaryAction} size={16} />
+                <AppText variant="caption">{statusFilterLabel}</AppText>
+                <ChevronDown color={colors.textMuted} size={15} />
+              </Pressable>
+              {debouncedQuery.length > 0 && (currentProjects?.length ?? 0) >= 50 && (
+                <AppText tone="secondary" variant="caption">
+                  Search results are limited to the first 50 projects.
+                </AppText>
+              )}
+              {currentError && (
+                <InlineError
+                  message={currentError}
+                  onRetry={() => setRetry((value) => value + 1)}
+                  retryLabel="Retry loading projects"
+                />
+              )}
+              {currentGovernanceError && (
+                <InlineError
+                  message={currentGovernanceError}
+                  onRetry={() => setGovernanceRetry((value) => value + 1)}
+                  retryLabel="Retry checking project permissions"
+                />
+              )}
+              {loading && !currentProjects && !currentError && (
+                <LoadingState label="Loading projects" />
               )}
             </View>
-            <Pressable
-              accessibilityLabel={`Filter projects, ${statusFilterLabel}`}
-              accessibilityRole="button"
-              onPress={() => setFiltersVisible(true)}
-              style={{
-                alignSelf: 'flex-start',
-                minHeight: 38,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: themeTokens.spacing.xs,
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: themeTokens.radius.pill,
-                paddingHorizontal: themeTokens.spacing.sm,
-                backgroundColor: colors.surface,
-              }}
+          }
+          ListEmptyComponent={
+            (loading && !currentProjects) || currentError ? undefined : (
+              <View style={{ alignItems: 'center', gap: themeTokens.spacing.sm, padding: 24 }}>
+                <AppText accessibilityRole="header" variant="label">
+                  {emptyTitle}
+                </AppText>
+                <AppText style={{ textAlign: 'center' }} tone="secondary">
+                  {hasFilters
+                    ? 'Try another search or filter.'
+                    : 'Projects you can access in this workspace will appear here.'}
+                </AppText>
+              </View>
+            )
+          }
+          refreshControl={
+            <RefreshControl
+              colors={[colors.primaryAction]}
+              onRefresh={() => setRetry((value) => value + 1)}
+              refreshing={loading && Boolean(currentProjects)}
+              tintColor={colors.primaryAction}
+            />
+          }
+          renderItem={({ item }) => <ProjectCard project={item} />}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          testID="projects-list"
+        />
+        <BottomSheet
+          footer={
+            <AppButton
+              accessibilityLabel="Close project filters"
+              onPress={() => setFiltersVisible(false)}
+              style={{ marginTop: themeTokens.spacing.md }}
+              variant="outline"
             >
-              <SlidersHorizontal color={colors.primaryAction} size={16} />
-              <AppText variant="caption">{statusFilterLabel}</AppText>
-              <ChevronDown color={colors.textMuted} size={15} />
-            </Pressable>
-            {debouncedQuery.length > 0 && (currentProjects?.length ?? 0) >= 50 && (
-              <AppText tone="secondary" variant="caption">
-                Search results are limited to the first 50 projects.
-              </AppText>
-            )}
-            {currentError && (
-              <InlineError
-                message={currentError}
-                onRetry={() => setRetry((value) => value + 1)}
-                retryLabel="Retry loading projects"
-              />
-            )}
-            {currentGovernanceError && (
-              <InlineError
-                message={currentGovernanceError}
-                onRetry={() => setGovernanceRetry((value) => value + 1)}
-                retryLabel="Retry checking project permissions"
-              />
-            )}
-            {loading && !currentProjects && !currentError && (
-              <LoadingState label="Loading projects" />
-            )}
-          </View>
-        }
-        ListEmptyComponent={
-          (loading && !currentProjects) || currentError ? undefined : (
-            <View style={{ alignItems: 'center', gap: themeTokens.spacing.sm, padding: 24 }}>
-              <AppText accessibilityRole="header" variant="label">
-                {emptyTitle}
-              </AppText>
-              <AppText style={{ textAlign: 'center' }} tone="secondary">
-                {hasFilters
-                  ? 'Try another search or filter.'
-                  : 'Projects you can access in this workspace will appear here.'}
-              </AppText>
+              Done
+            </AppButton>
+          }
+          onClose={() => setFiltersVisible(false)}
+          title="Filter projects"
+          visible={filtersVisible}
+        >
+          <View style={{ gap: themeTokens.spacing.xs }}>
+            <AppText variant="label">Status</AppText>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
+              {(['', ...PROJECT_STATUSES] as (ProjectStatus | '')[]).map((value) => {
+                const label = value ? PROJECT_STATUS_LABELS[value] : 'All statuses';
+                const selected = statusFilter === value;
+                return (
+                  <Pressable
+                    accessibilityLabel={`Filter status: ${label}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    key={value || 'all'}
+                    onPress={() => setStatusFilter(value)}
+                    style={{
+                      minHeight: themeTokens.touchTarget.minimum,
+                      justifyContent: 'center',
+                      borderRadius: themeTokens.radius.pill,
+                      paddingHorizontal: themeTokens.spacing.md,
+                      backgroundColor: selected ? colors.primaryAction : colors.surfaceSubtle,
+                      borderWidth: selected ? 0 : 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <AppText tone={selected ? 'inverse' : 'secondary'} variant="caption">
+                      {label}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
             </View>
-          )
-        }
-        refreshControl={
-          <RefreshControl
-            colors={[colors.primaryAction]}
-            onRefresh={() => setRetry((value) => value + 1)}
-            refreshing={loading && Boolean(currentProjects)}
-            tintColor={colors.primaryAction}
-          />
-        }
-        renderItem={({ item }) => <ProjectCard project={item} />}
-        showsHorizontalScrollIndicator={false}
-        showsVerticalScrollIndicator={false}
-        testID="projects-list"
-      />
-      <BottomSheet
-        footer={
-          <AppButton
-            accessibilityLabel="Close project filters"
-            onPress={() => setFiltersVisible(false)}
-            style={{ marginTop: themeTokens.spacing.md }}
-            variant="outline"
-          >
-            Done
-          </AppButton>
-        }
-        onClose={() => setFiltersVisible(false)}
-        title="Filter projects"
-        visible={filtersVisible}
-      >
-        <View style={{ gap: themeTokens.spacing.xs }}>
-          <AppText variant="label">Status</AppText>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
-            {(['', ...PROJECT_STATUSES] as (ProjectStatus | '')[]).map((value) => {
-              const label = value ? PROJECT_STATUS_LABELS[value] : 'All statuses';
-              const selected = statusFilter === value;
-              return (
-                <Pressable
-                  accessibilityLabel={`Filter status: ${label}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  key={value || 'all'}
-                  onPress={() => setStatusFilter(value)}
-                  style={{
-                    minHeight: themeTokens.touchTarget.minimum,
-                    justifyContent: 'center',
-                    borderRadius: themeTokens.radius.pill,
-                    paddingHorizontal: themeTokens.spacing.md,
-                    backgroundColor: selected ? colors.primaryAction : colors.surfaceSubtle,
-                    borderWidth: selected ? 0 : 1,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <AppText tone={selected ? 'inverse' : 'secondary'} variant="caption">
-                    {label}
-                  </AppText>
-                </Pressable>
-              );
-            })}
           </View>
-        </View>
-      </BottomSheet>
+        </BottomSheet>
+      </View>
     </AppScreen>
   );
 }

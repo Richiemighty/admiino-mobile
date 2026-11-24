@@ -117,6 +117,11 @@ export function InboxCountProvider({ children }: PropsWithChildren) {
 
 export function useInboxCount(): InboxCountValue {
   const context = useContext(InboxCountContext);
-  if (!context) throw new Error('useInboxCount must be used within InboxCountProvider.');
-  return context;
+  return (
+    context ?? {
+      unreadCount: null,
+      countError: null,
+      refreshUnreadCount: async () => undefined,
+    }
+  );
 }

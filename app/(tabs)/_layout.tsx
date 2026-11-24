@@ -1,10 +1,10 @@
 import { router, Tabs, useFocusEffect } from 'expo-router';
-import { Ellipsis, FolderKanban, Home, Inbox, ListTodo } from 'lucide-react-native';
+import { CalendarDays, Ellipsis, FolderKanban, Home, ListTodo } from 'lucide-react-native';
 import { useCallback } from 'react';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 import { AppScreen, LoadingState } from '../../src/components/ui';
-import { InboxCountProvider, useInboxCount } from '../../src/features/inbox/InboxCountProvider';
+import { InboxCountProvider } from '../../src/features/inbox/InboxCountProvider';
 import { useAppTheme } from '../../src/theme';
 
 export default function MainTabsLayout() {
@@ -44,9 +44,6 @@ export default function MainTabsLayout() {
 
 function WorkspaceTabs() {
   const { colors } = useAppTheme();
-  const { unreadCount } = useInboxCount();
-  const badge =
-    unreadCount && unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : undefined;
 
   return (
     <Tabs
@@ -89,22 +86,14 @@ function WorkspaceTabs() {
         }}
       />
       <Tabs.Screen
-        name="inbox"
+        name="calendar"
         options={{
-          title: 'Inbox',
-          tabBarAccessibilityLabel: badge ? `Inbox tab, ${badge} unread` : 'Inbox tab',
-          tabBarBadge: badge,
-          tabBarBadgeStyle: {
-            backgroundColor: colors.primaryAction,
-            color: colors.onPrimary,
-            fontSize: 9,
-            minWidth: 16,
-            height: 16,
-            lineHeight: 16,
-          },
-          tabBarIcon: ({ color, size }) => <Inbox color={color} size={size} />,
+          title: 'Calendar',
+          tabBarAccessibilityLabel: 'Calendar tab',
+          tabBarIcon: ({ color, size }) => <CalendarDays color={color} size={size} />,
         }}
       />
+      <Tabs.Screen name="inbox" options={{ href: null }} />
       <Tabs.Screen
         name="more"
         options={{

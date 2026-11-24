@@ -116,7 +116,7 @@ describe('P11 Home, Global Search, and More screens', () => {
     await renderWithProviders(<HomeScreen />);
 
     expect(await screen.findByText('Hello, Ada')).toBeTruthy();
-    expect(screen.getByText('Alpha Workspace')).toBeTruthy();
+    expect(screen.getAllByText('Alpha Workspace').length).toBeGreaterThan(0);
     expect(screen.getByText('Needs attention')).toBeTruthy();
     expect(screen.getByText('Due soon')).toBeTruthy();
     expect(await screen.findAllByText('Prepare quarterly plan')).not.toHaveLength(0);
@@ -171,30 +171,22 @@ describe('P11 Home, Global Search, and More screens', () => {
     await waitFor(() => expect(router.push).toHaveBeenCalledWith('/settings'));
   });
 
-  it('switches workspaces and signs out from the profile drawer', async () => {
-    const logout = jest.fn(async () => undefined);
-    jest.mocked(useAuth).mockReturnValue(authState(alpha, logout));
+  it('opens the quick workspace switcher from the profile drawer', async () => {
+    jest.mocked(useAuth).mockReturnValue(authState(alpha));
     const view = await renderWithProviders(<HomeScreen />);
     expect(await screen.findByText('Hello, Ada')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Open profile and navigation menu' }));
     await fireEvent.press(
       screen.getByRole('button', { name: /Switch workspace, current workspace Alpha Workspace/ }),
     );
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/workspace-select'));
-
-    await fireEvent.press(screen.getByRole('button', { name: 'Open profile and navigation menu' }));
-    await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
-    await waitFor(() => {
-      expect(logout).toHaveBeenCalledTimes(1);
-      expect(router.replace).toHaveBeenCalledWith('/sign-in');
-    });
+    await waitFor(() => expect(screen.getByText('Switch workspace')).toBeTruthy());
     view.unmount();
   });
 
   it('opens My Profile and Settings from More', async () => {
     await renderWithProviders(<MoreScreen />);
 
-    await fireEvent.press(screen.getByRole('button', { name: 'Open My Profile' }));
+    await fireEvent.press(screen.getAllByRole('button', { name: 'Open My Profile' }).at(-1)!);
     expect(router.push).toHaveBeenCalledWith('/profile');
     await fireEvent.press(screen.getByRole('button', { name: 'Open Settings' }));
     expect(router.push).toHaveBeenCalledWith('/settings');
@@ -389,7 +381,7 @@ describe('P11 Home, Global Search, and More screens', () => {
     expect(screen.getByText('ada@example.test')).toBeTruthy();
     expect(screen.getByText('Member')).toBeTruthy();
     expect(screen.queryByText('Executive')).toBeNull();
-    expect(screen.getByText('Alpha Workspace')).toBeTruthy();
+    expect(screen.getAllByText('Alpha Workspace').length).toBeGreaterThan(0);
 
     await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
     expect(logout).not.toHaveBeenCalled();
@@ -402,10 +394,12 @@ describe('P11 Home, Global Search, and More screens', () => {
   });
 
   it('keeps workspace switching available from More', async () => {
+    jest
+      .mocked(useAuth)
+      .mockReturnValue(Object.assign(authState(), { clearWorkspaceError: jest.fn() }) as never);
     await renderWithProviders(<MoreScreen />);
 
     await fireEvent.press(screen.getByRole('button', { name: 'Switch workspace' }));
-
-    expect(router.push).toHaveBeenCalledWith('/workspace-select');
+    expect(screen.getByTestId('quick-workspace-switcher')).toBeTruthy();
   });
 });
