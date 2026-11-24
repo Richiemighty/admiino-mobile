@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import {
   ArrowRightLeft,
   CalendarDays,
@@ -8,8 +8,8 @@ import {
   ListTodo,
   Search,
 } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { RefreshControl, ScrollView, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
@@ -67,17 +67,6 @@ async function routeForAccessError(error: unknown, logout: () => Promise<void>):
     return true;
   }
   return false;
-}
-
-function openTaskDestination(title: string) {
-  Alert.alert(
-    'Task details are not available yet',
-    `"${title}" is in your workspace. Open the Tasks tab for its current availability.`,
-    [
-      { text: 'Not now', style: 'cancel' },
-      { text: 'Open Tasks', onPress: () => router.push('/(tabs)/tasks') },
-    ],
-  );
 }
 
 function TaskRow({
@@ -141,43 +130,48 @@ export function HomeScreen() {
   const currentDashboard = dashboard?.workspaceId === workspaceId ? dashboard : null;
   const errorMessage = errorState?.workspaceId === workspaceId ? errorState.message : null;
 
-  useEffect(() => {
-    if (status !== 'authenticated' || workspacePermissionStatus !== 'ready' || !workspaceId) {
-      return;
-    }
+  useFocusEffect(
+    useCallback(() => {
+      if (status !== 'authenticated' || workspacePermissionStatus !== 'ready' || !workspaceId) {
+        return undefined;
+      }
 
-    const controller = new AbortController();
-    void Promise.resolve()
-      .then(() => {
-        if (controller.signal.aborted) return undefined;
-        setDashboard((current) => (current?.workspaceId === workspaceId ? current : null));
-        setLoading(true);
-        setErrorState(null);
-        return homeService.getDashboardData(workspaceId, controller.signal);
-      })
-      .then((response) => {
-        if (!controller.signal.aborted && response) setDashboard(response);
-      })
-      .catch(async (requestError: unknown) => {
-        if (controller.signal.aborted) return;
-        try {
-          const wasRedirected = await routeForAccessError(requestError, () => logoutRef.current());
-          if (!wasRedirected) {
-            setErrorState({ workspaceId, message: requestErrorMessage(requestError) });
+      const controller = new AbortController();
+      void Promise.resolve()
+        .then(() => {
+          if (controller.signal.aborted) return undefined;
+          setDashboard((current) => (current?.workspaceId === workspaceId ? current : null));
+          setLoading(true);
+          setErrorState(null);
+          return homeService.getDashboardData(workspaceId, controller.signal);
+        })
+        .then((response) => {
+          if (!controller.signal.aborted && response) setDashboard(response);
+        })
+        .catch(async (requestError: unknown) => {
+          if (controller.signal.aborted) return;
+          try {
+            const wasRedirected = await routeForAccessError(
+              requestError,
+              () => logoutRef.current(),
+            );
+            if (!wasRedirected) {
+              setErrorState({ workspaceId, message: requestErrorMessage(requestError) });
+            }
+          } catch {
+            setErrorState({
+              workspaceId,
+              message: 'Your session could not be cleared safely. Please try again.',
+            });
           }
-        } catch {
-          setErrorState({
-            workspaceId,
-            message: 'Your session could not be cleared safely. Please try again.',
-          });
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
 
-    return () => controller.abort();
-  }, [loadAttempt, status, workspaceId, workspacePermissionStatus]);
+      return () => controller.abort();
+    }, [loadAttempt, status, workspaceId, workspacePermissionStatus]),
+  );
 
   const retry = () => setLoadAttempt((attempt) => attempt + 1);
   const summary = currentDashboard?.summary;
@@ -323,7 +317,7 @@ export function HomeScreen() {
                 attentionTasks.map((task) => (
                   <TaskRow
                     key={task.id}
-                    onPress={() => openTaskDestination(task.title)}
+                    onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
                     task={task}
                   />
                 ))
@@ -347,7 +341,7 @@ export function HomeScreen() {
                 dueSoonTasks.map((task) => (
                   <TaskRow
                     key={task.id}
-                    onPress={() => openTaskDestination(task.title)}
+                    onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
                     task={task}
                   />
                 ))

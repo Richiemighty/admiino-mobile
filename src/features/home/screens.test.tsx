@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
-import { router } from 'expo-router';
+import { router, triggerFocusEffectsForTest } from 'expo-router';
 import { Alert } from 'react-native';
 
 import { ApiError, ApiNetworkError } from '../../api';
@@ -120,6 +120,26 @@ describe('P11 Home, Global Search, and More screens', () => {
       'workspace-1',
       expect.any(AbortSignal),
     );
+  });
+
+  it('opens Home task rows at task details and reloads the summary on refocus', async () => {
+    jest
+      .mocked(homeService.getDashboardData)
+      .mockResolvedValueOnce(dashboardFor('workspace-1', 'Prepare quarterly plan'))
+      .mockResolvedValueOnce(dashboardFor('workspace-1', 'Recently updated task'));
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findAllByText('Prepare quarterly plan')).not.toHaveLength(0);
+
+    await fireEvent.press(
+      screen.getByRole('button', { name: 'Open task Prepare quarterly plan' }),
+    );
+    expect(router.push).toHaveBeenCalledWith('/tasks/workspace-1-task-1');
+
+    await act(async () => {
+      triggerFocusEffectsForTest();
+    });
+    expect(await screen.findAllByText('Recently updated task')).not.toHaveLength(0);
+    expect(homeService.getDashboardData).toHaveBeenCalledTimes(2);
   });
 
   it('removes previous-workspace dashboard data before rendering the new selection', async () => {

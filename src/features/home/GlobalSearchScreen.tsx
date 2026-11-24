@@ -66,9 +66,13 @@ function searchErrorMessage(error: unknown): string {
   return 'Search is temporarily unavailable. Please try again.';
 }
 
-function openResult(group: SearchGroup, title: string) {
+function openResult(group: SearchGroup, id: string, title: string) {
+  if (group === 'tasks') {
+    router.push(`/tasks/${encodeURIComponent(id)}`);
+    return;
+  }
   if (group === 'people') return;
-  const destination = group === 'tasks' ? 'Tasks' : 'Projects';
+  const destination = 'Projects';
   Alert.alert(
     `${destination} details are not available yet`,
     `“${title}” was found in the active workspace. Open the ${destination} tab for its current availability.`,
@@ -76,7 +80,7 @@ function openResult(group: SearchGroup, title: string) {
       { text: 'Not now', style: 'cancel' },
       {
         text: `Open ${destination}`,
-        onPress: () => router.push(group === 'tasks' ? '/(tabs)/tasks' : '/(tabs)/projects'),
+        onPress: () => router.push('/(tabs)/projects'),
       },
     ],
   );
@@ -84,10 +88,12 @@ function openResult(group: SearchGroup, title: string) {
 
 function SearchResultRow({
   group,
+  id,
   title,
   subtitle,
 }: {
   group: SearchGroup;
+  id: string;
   title: string;
   subtitle: string;
 }) {
@@ -140,7 +146,7 @@ function SearchResultRow({
     <Pressable
       accessibilityLabel={`${title}, ${group}`}
       accessibilityRole="button"
-      onPress={() => openResult(group, title)}
+      onPress={() => openResult(group, id, title)}
       style={({ pressed }) => ({
         minHeight: themeTokens.touchTarget.minimum,
         flexDirection: 'row',
@@ -526,6 +532,7 @@ export function GlobalSearchScreen() {
               {results.map((result) => (
                 <SearchResultRow
                   group={key}
+                  id={result.id}
                   key={`${key}-${result.id}`}
                   subtitle={result.subtitle}
                   title={result.title}
