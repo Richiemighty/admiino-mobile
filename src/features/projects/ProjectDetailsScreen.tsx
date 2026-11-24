@@ -119,12 +119,16 @@ function taskAssignee(task: ProjectTask): string | null {
 export function ProjectDetailsScreen({
   projectId,
   initialSection,
+  returnToInbox = false,
 }: {
   projectId: string;
   initialSection?: string;
+  returnToInbox?: boolean;
 }) {
   const { activeWorkspace, permissions, status, workspacePermissionStatus, logout } = useAuth();
   const { colors } = useAppTheme();
+  const returnToProjectList = () =>
+    router.replace(returnToInbox ? '/(tabs)/inbox' : '/(tabs)/projects');
   const workspaceId = activeWorkspace?.companyId ?? null;
   const isReady =
     status === 'authenticated' &&
@@ -311,7 +315,7 @@ export function ProjectDetailsScreen({
           <IconButton
             accessibilityLabel="Back to Projects"
             icon={<ArrowLeft color={colors.text} size={22} />}
-            onPress={() => router.replace('/(tabs)/projects')}
+            onPress={returnToProjectList}
           />
           {currentLoadError ? (
             <InlineError
@@ -324,7 +328,7 @@ export function ProjectDetailsScreen({
           )}
           <AppButton
             accessibilityLabel="Return to Projects"
-            onPress={() => router.replace('/(tabs)/projects')}
+            onPress={returnToProjectList}
             variant="outline"
           >
             Back to Projects
@@ -385,7 +389,8 @@ export function ProjectDetailsScreen({
             accessibilityLabel="Back to Projects"
             icon={<ArrowLeft color={colors.text} size={22} />}
             onPress={() => {
-              if (router.canGoBack()) router.back();
+              if (returnToInbox) router.replace('/(tabs)/inbox');
+              else if (router.canGoBack()) router.back();
               else router.replace('/(tabs)/projects');
             }}
           />

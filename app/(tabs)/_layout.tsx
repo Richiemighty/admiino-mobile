@@ -4,11 +4,11 @@ import { useCallback } from 'react';
 
 import { useAuth } from '../../src/auth/AuthProvider';
 import { AppScreen, LoadingState } from '../../src/components/ui';
+import { InboxCountProvider, useInboxCount } from '../../src/features/inbox/InboxCountProvider';
 import { useAppTheme } from '../../src/theme';
 
 export default function MainTabsLayout() {
   const { status, activeWorkspace, workspacePermissionStatus } = useAuth();
-  const { colors } = useAppTheme();
 
   useFocusEffect(
     useCallback(() => {
@@ -34,6 +34,19 @@ export default function MainTabsLayout() {
       </AppScreen>
     );
   }
+
+  return (
+    <InboxCountProvider>
+      <WorkspaceTabs />
+    </InboxCountProvider>
+  );
+}
+
+function WorkspaceTabs() {
+  const { colors } = useAppTheme();
+  const { unreadCount } = useInboxCount();
+  const badge =
+    unreadCount && unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : undefined;
 
   return (
     <Tabs
@@ -79,7 +92,16 @@ export default function MainTabsLayout() {
         name="inbox"
         options={{
           title: 'Inbox',
-          tabBarAccessibilityLabel: 'Inbox tab',
+          tabBarAccessibilityLabel: badge ? `Inbox tab, ${badge} unread` : 'Inbox tab',
+          tabBarBadge: badge,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.primaryAction,
+            color: colors.onPrimary,
+            fontSize: 9,
+            minWidth: 16,
+            height: 16,
+            lineHeight: 16,
+          },
           tabBarIcon: ({ color, size }) => <Inbox color={color} size={size} />,
         }}
       />

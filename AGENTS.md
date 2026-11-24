@@ -168,6 +168,8 @@ When blocked, deliver the smallest reproducible evidence and a proposed resoluti
 
 ## 12. Phase map (read the development playbook for full prompts)
 
+The current approved sequence supersedes the older proposed numbering in the development playbook: P13 is Projects, P14 is Inbox and workspace approvals, and P15 is task conversations/files. Push delivery remains deferred until the B-02 backend contract exists.
+
 | Phase | Workstream | Earliest status |
 |---|---|---|
 | P00 | Product decisions, contracts, risk owners | Design-ready gate |
@@ -183,9 +185,9 @@ When blocked, deliver the smallest reproducible evidence and a proposed resoluti
 | P10 | Workspace switching, permissions and five-tab shell | Safe authorised navigation |
 | P11 | Home, search and More | H01/H03/S01 |
 | P12 | Tasks list, details, create/edit and review | T01/T02/T04/T05 |
-| P13 | Task conversation and file viewer | T03/F03 |
-| P14 | Projects | P01/P02/P03 |
-| P15 | Inbox, approvals, preferences and push | N01/N02/M06/A10 |
+| **P13** | **Projects** | **P01/P02/P03 — implemented and published** |
+| **P14** | **Inbox, workspace approvals and supported notification preferences** | **N01/N02/M06 — push deferred** |
+| P15 | Task conversations and authenticated files | T03/F03 |
 | P16 | Profile, settings and deletion | S02/S04/S10 |
 | P17 | Full QA, beta, release and Phase 2/3 handoff | Go/no-go |
 

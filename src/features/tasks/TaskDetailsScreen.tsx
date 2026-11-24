@@ -194,9 +194,11 @@ function StatusOption({
 export function TaskDetailsScreen({
   taskId,
   returnProjectId,
+  returnToInbox = false,
 }: {
   taskId: string;
   returnProjectId?: string;
+  returnToInbox?: boolean;
 }) {
   const { activeWorkspace, permissions, status, workspacePermissionStatus, logout } = useAuth();
   const { colors } = useAppTheme();
@@ -230,7 +232,9 @@ export function TaskDetailsScreen({
     workspacePermissionStatus === 'ready' &&
     Boolean(activeWorkspace && workspaceId);
   const backToContext = () => {
-    if (returnProjectId) {
+    if (returnToInbox) {
+      router.replace('/(tabs)/inbox');
+    } else if (returnProjectId) {
       if (router.canGoBack()) router.back();
       else router.replace(`/projects/${encodeURIComponent(returnProjectId)}?tab=tasks`);
     } else {
