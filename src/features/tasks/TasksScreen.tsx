@@ -1,14 +1,29 @@
 import { router, useFocusEffect } from 'expo-router';
-import { CalendarDays, ChevronRight, ListTodo } from 'lucide-react-native';
+import {
+  ChevronDown,
+  ChevronRight,
+  ListTodo,
+  Search,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, TextInput, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
-import { AppButton, AppCard, AppScreen, AppText, InlineError, LoadingState } from '../../components/ui';
-import { getDueDateLabel } from '../home/dashboard-utils';
+import {
+  AppButton,
+  AppCard,
+  AppScreen,
+  AppText,
+  BottomSheet,
+  InlineError,
+  LoadingState,
+} from '../../components/ui';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
+import { getDueDateLabel } from '../home/dashboard-utils';
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
@@ -16,8 +31,8 @@ import {
   type TaskPage,
   type TaskPriority,
   type TaskRelation,
-  type TaskStatus,
   taskService,
+  type TaskStatus,
 } from './service';
 
 type StatusFilter = TaskStatus | '';
@@ -31,11 +46,6 @@ interface ScopedTaskPage extends TaskPage {
 function labelFor(value: string | null | undefined): string {
   if (!value) return 'Not set';
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function personLabel(person: TaskListItem['assignee']): string | null {
-  if (!person) return null;
-  return [person.firstName, person.lastName].filter(Boolean).join(' ').trim() || null;
 }
 
 function requestErrorMessage(error: unknown): string {
@@ -68,16 +78,16 @@ function FilterChip({
       accessibilityState={{ selected }}
       onPress={onPress}
       style={{
-        minHeight: themeTokens.touchTarget.minimum,
+        minHeight: 34,
         justifyContent: 'center',
         borderRadius: themeTokens.radius.pill,
-        paddingHorizontal: themeTokens.spacing.md,
-        backgroundColor: selected ? colors.primarySurface : colors.surface,
+        paddingHorizontal: themeTokens.spacing.sm,
+        backgroundColor: selected ? colors.primaryAction : colors.surfaceSubtle,
         borderWidth: selected ? 0 : 1,
         borderColor: colors.border,
       }}
     >
-      <AppText tone={selected ? 'link' : 'secondary'} variant="caption">
+      <AppText tone={selected ? 'inverse' : 'secondary'} variant="caption">
         {label}
       </AppText>
     </Pressable>
@@ -86,27 +96,32 @@ function FilterChip({
 
 function TaskCard({ task }: { task: TaskListItem }) {
   const { colors } = useAppTheme();
-  const assigneeNames = task.assignees?.length
-    ? task.assignees.map(personLabel).filter(Boolean).join(', ')
-    : personLabel(task.assignee);
   const dueLabel = getDueDateLabel(task.deadline);
-  const related = [task.project?.name, task.team?.name, assigneeNames].filter(Boolean).join(' · ');
+  const related = task.project?.name ?? task.team?.name ?? null;
 
   return (
     <AppCard
       accessibilityLabel={`Open task ${task.title}`}
       onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
       padding="sm"
-      style={{ gap: themeTokens.spacing.xs }}
+      style={{ gap: themeTokens.spacing.xxs, borderWidth: 0 }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
         <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
           <AppText numberOfLines={2} variant="label">
             {task.title}
           </AppText>
-          <AppText numberOfLines={1} tone="secondary" variant="caption">
-            {labelFor(task.status)} · {labelFor(task.priority)}
-          </AppText>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.xs }}>
+            <AppText numberOfLines={1} tone="secondary" variant="caption">
+              {labelFor(task.status)}
+            </AppText>
+            <AppText tone="subtle" variant="caption">
+              ·
+            </AppText>
+            <AppText numberOfLines={1} tone="secondary" variant="caption">
+              {labelFor(task.priority)}
+            </AppText>
+          </View>
         </View>
         <ChevronRight color={colors.textMuted} size={18} />
       </View>
@@ -129,11 +144,19 @@ function TaskCard({ task }: { task: TaskListItem }) {
 }
 
 export function TasksScreen() {
+  const { activeWorkspace } = useAuth();
+  return <TasksScreenContent key={activeWorkspace?.companyId ?? 'no-workspace'} />;
+}
+
+function TasksScreenContent() {
   const { activeWorkspace, permissions, status, workspacePermissionStatus, logout } = useAuth();
   const { colors } = useAppTheme();
   const [relation, setRelation] = useState<TaskRelation>('assigned');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('');
+  const [draftStatus, setDraftStatus] = useState<StatusFilter>('');
+  const [draftPriority, setDraftPriority] = useState<PriorityFilter>('');
+  const [filtersVisible, setFiltersVisible] = useState(false);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [pageData, setPageData] = useState<ScopedTaskPage | null>(null);
@@ -145,6 +168,7 @@ export function TasksScreen() {
   const moreRequest = useRef<AbortController | null>(null);
   const workspaceId = activeWorkspace?.companyId ?? null;
   const canViewAllTasks = permissions?.permissions.view_all_tasks === true;
+  const activeRelation = relation === 'all' && !canViewAllTasks ? 'assigned' : relation;
   const canCreateTasks =
     workspacePermissionStatus === 'ready' &&
     permissions?.permissions.create_tasks === true &&
@@ -155,30 +179,26 @@ export function TasksScreen() {
     Boolean(activeWorkspace && workspaceId);
   const listKey = [
     workspaceId ?? '',
-    relation,
+    activeRelation,
     statusFilter,
     priorityFilter,
     debouncedQuery,
   ].join('|');
-  const currentPage = pageData?.workspaceId === workspaceId && pageData.key === listKey
-    ? pageData
-    : null;
+  const currentPage =
+    pageData?.workspaceId === workspaceId && pageData.key === listKey ? pageData : null;
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query.trim().slice(0, 100)), 350);
     return () => clearTimeout(timer);
   }, [query]);
 
-  useEffect(() => {
-    if (relation === 'all' && !canViewAllTasks) setRelation('assigned');
-  }, [canViewAllTasks, relation]);
-
   useFocusEffect(
     useCallback(() => {
       if (!isReady || !workspaceId) return undefined;
-      if (relation === 'all' && !canViewAllTasks) return undefined;
+      if (activeRelation === 'all' && !canViewAllTasks) return undefined;
 
       const controller = new AbortController();
+      const requestAttempt = retry;
       activeRequest.current?.abort();
       moreRequest.current?.abort();
       activeRequest.current = controller;
@@ -189,7 +209,7 @@ export function TasksScreen() {
         .listTasks(
           workspaceId,
           {
-            relation,
+            relation: activeRelation,
             page: 1,
             query: debouncedQuery,
             ...(statusFilter ? { status: statusFilter } : {}),
@@ -199,11 +219,11 @@ export function TasksScreen() {
           controller.signal,
         )
         .then((response) => {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted || requestAttempt !== retry) return;
           setPageData({ ...response, workspaceId, key: listKey });
         })
         .catch(async (requestError: unknown) => {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted || requestAttempt !== retry) return;
           if (requestError instanceof ApiError && requestError.status === 401) {
             try {
               await logout();
@@ -220,7 +240,7 @@ export function TasksScreen() {
           setError(requestErrorMessage(requestError));
         })
         .finally(() => {
-          if (!controller.signal.aborted) setLoading(false);
+          if (!controller.signal.aborted && requestAttempt === retry) setLoading(false);
         });
 
       return () => {
@@ -229,12 +249,12 @@ export function TasksScreen() {
       };
     }, [
       canViewAllTasks,
+      activeRelation,
       debouncedQuery,
       isReady,
       listKey,
       logout,
       priorityFilter,
-      relation,
       statusFilter,
       workspaceId,
       retry,
@@ -242,7 +262,12 @@ export function TasksScreen() {
   );
 
   const loadMore = async () => {
-    if (!currentPage || loadingMore || currentPage.tasks.length >= currentPage.total || !workspaceId)
+    if (
+      !currentPage ||
+      loadingMore ||
+      currentPage.tasks.length >= currentPage.total ||
+      !workspaceId
+    )
       return;
     const controller = new AbortController();
     moreRequest.current?.abort();
@@ -253,7 +278,7 @@ export function TasksScreen() {
       const next = await taskService.listTasks(
         workspaceId,
         {
-          relation,
+          relation: activeRelation,
           page: currentPage.page + 1,
           query: debouncedQuery,
           ...(statusFilter ? { status: statusFilter } : {}),
@@ -295,17 +320,257 @@ export function TasksScreen() {
     ...(canViewAllTasks ? [{ label: 'All Tasks', value: 'all' as const }] : []),
   ];
 
+  const activeFilterCount = Number(Boolean(statusFilter)) + Number(Boolean(priorityFilter));
+  const dismissFilters = () => {
+    setDraftStatus(statusFilter);
+    setDraftPriority(priorityFilter);
+    setFiltersVisible(false);
+  };
+  const emptyLabel =
+    query || statusFilter || priorityFilter
+      ? 'Try changing your search or filters.'
+      : activeRelation === 'assigned'
+        ? 'Tasks assigned to you will appear here.'
+        : activeRelation === 'created'
+          ? 'Tasks you create will appear here.'
+          : 'There are no tasks in this workspace.';
+
   return (
     <AppScreen padding="md">
-      <ScrollView
+      <FlatList
         contentContainerStyle={{
           width: '100%',
           maxWidth: 720,
           alignSelf: 'center',
-          gap: themeTokens.spacing.md,
-          paddingBottom: themeTokens.spacing.xl,
+          gap: themeTokens.spacing.xs,
+          paddingBottom: themeTokens.spacing.lg,
         }}
+        data={currentPage?.tasks ?? []}
+        keyExtractor={(task) => task.id}
         keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          <View style={{ gap: themeTokens.spacing.sm, marginBottom: themeTokens.spacing.xs }}>
+            <View style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center' }}>
+              <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
+                Tasks
+              </AppText>
+              {canCreateTasks && (
+                <AppButton
+                  accessibilityLabel="Create task"
+                  icon={<ListTodo color={colors.onPrimary} size={16} />}
+                  onPress={() => router.push('/task-create')}
+                  style={{ minHeight: 40, minWidth: 104 }}
+                  variant="primary"
+                >
+                  + Create
+                </AppButton>
+              )}
+            </View>
+
+            <View
+              accessibilityRole="tablist"
+              style={{ flexDirection: 'row', gap: themeTokens.spacing.xxs }}
+            >
+              {views.map((view) => (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: activeRelation === view.value }}
+                  key={view.value}
+                  onPress={() => setRelation(view.value)}
+                  style={{
+                    flex: 1,
+                    minHeight: 40,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingHorizontal: 2,
+                    borderBottomWidth: activeRelation === view.value ? 2 : 1,
+                    borderBottomColor:
+                      activeRelation === view.value ? colors.primaryAction : colors.border,
+                  }}
+                >
+                  <AppText
+                    numberOfLines={1}
+                    tone={activeRelation === view.value ? 'link' : 'secondary'}
+                    variant="caption"
+                  >
+                    {view.label}
+                  </AppText>
+                </Pressable>
+              ))}
+            </View>
+
+            <View
+              style={{
+                minHeight: 44,
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: themeTokens.radius.md,
+                paddingLeft: themeTokens.spacing.sm,
+                backgroundColor: colors.surface,
+              }}
+            >
+              <Search color={colors.textMuted} size={18} />
+              <TextInput
+                accessibilityLabel="Search tasks"
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={100}
+                onChangeText={setQuery}
+                placeholder="Search tasks"
+                placeholderTextColor={colors.textMuted}
+                returnKeyType="search"
+                style={{
+                  flex: 1,
+                  minHeight: 42,
+                  color: colors.text,
+                  paddingHorizontal: themeTokens.spacing.sm,
+                  fontSize: 16,
+                }}
+                testID="task-search-input"
+                value={query}
+              />
+              {query.length > 0 && (
+                <Pressable
+                  accessibilityLabel="Clear task search"
+                  accessibilityRole="button"
+                  onPress={() => setQuery('')}
+                  style={{
+                    minWidth: 42,
+                    minHeight: 42,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <X color={colors.textMuted} size={18} />
+                </Pressable>
+              )}
+            </View>
+
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.xs }}
+            >
+              <Pressable
+                accessibilityLabel={`Status: ${statusFilter ? labelFor(statusFilter) : 'Any'}`}
+                accessibilityRole="button"
+                onPress={() => {
+                  setDraftStatus(statusFilter);
+                  setDraftPriority(priorityFilter);
+                  setFiltersVisible(true);
+                }}
+                style={{
+                  minHeight: 36,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  paddingHorizontal: themeTokens.spacing.sm,
+                  borderRadius: themeTokens.radius.pill,
+                  backgroundColor: colors.surfaceSubtle,
+                }}
+              >
+                <AppText numberOfLines={1} variant="caption">
+                  {statusFilter ? labelFor(statusFilter) : 'Any status'}
+                </AppText>
+                <ChevronDown color={colors.textMuted} size={14} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel={`Priority: ${priorityFilter ? labelFor(priorityFilter) : 'Any'}`}
+                accessibilityRole="button"
+                onPress={() => {
+                  setDraftStatus(statusFilter);
+                  setDraftPriority(priorityFilter);
+                  setFiltersVisible(true);
+                }}
+                style={{
+                  minHeight: 36,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  paddingHorizontal: themeTokens.spacing.sm,
+                  borderRadius: themeTokens.radius.pill,
+                  backgroundColor: colors.surfaceSubtle,
+                }}
+              >
+                <AppText numberOfLines={1} variant="caption">
+                  {priorityFilter ? labelFor(priorityFilter) : 'Any priority'}
+                </AppText>
+                <ChevronDown color={colors.textMuted} size={14} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel={`Filters${activeFilterCount ? `, ${activeFilterCount} active` : ''}`}
+                accessibilityRole="button"
+                onPress={() => {
+                  setDraftStatus(statusFilter);
+                  setDraftPriority(priorityFilter);
+                  setFiltersVisible(true);
+                }}
+                style={{
+                  minHeight: 40,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  paddingHorizontal: themeTokens.spacing.xs,
+                }}
+              >
+                <SlidersHorizontal color={colors.primaryAction} size={17} />
+                <AppText tone="link" variant="caption">
+                  Filters{activeFilterCount ? ` ${activeFilterCount}` : ''}
+                </AppText>
+              </Pressable>
+            </View>
+
+            <AppText tone="secondary" variant="caption">
+              {currentPage
+                ? `${currentPage.total} ${currentPage.total === 1 ? 'task' : 'tasks'}`
+                : 'Tasks'}
+            </AppText>
+            {error && (
+              <InlineError
+                message={error}
+                onRetry={() => setRetry((value) => value + 1)}
+                retryLabel="Retry loading tasks"
+              />
+            )}
+            {loading && !currentPage ? <LoadingState label="Loading tasks" /> : null}
+          </View>
+        }
+        ListEmptyComponent={
+          !loading && !error && currentPage ? (
+            <View
+              style={{ alignItems: 'center', gap: themeTokens.spacing.xs, paddingVertical: 24 }}
+            >
+              <AppText variant="label">No tasks found</AppText>
+              <AppText style={{ textAlign: 'center' }} tone="secondary">
+                {emptyLabel}
+              </AppText>
+            </View>
+          ) : undefined
+        }
+        ListFooterComponent={
+          currentPage && currentPage.tasks.length > 0 ? (
+            <View style={{ gap: themeTokens.spacing.xs, paddingTop: themeTokens.spacing.sm }}>
+              {currentPage.tasks.length < currentPage.total && (
+                <AppButton
+                  accessibilityLabel="Load more tasks"
+                  loading={loadingMore}
+                  onPress={() => void loadMore()}
+                  variant="outline"
+                >
+                  Load more
+                </AppButton>
+              )}
+              <AppText
+                accessibilityLiveRegion="polite"
+                style={{ textAlign: 'center' }}
+                tone="subtle"
+                variant="caption"
+              >
+                Showing {currentPage.tasks.length} of {currentPage.total} tasks
+              </AppText>
+            </View>
+          ) : undefined
+        }
         refreshControl={
           <RefreshControl
             colors={[colors.primaryAction]}
@@ -314,172 +579,85 @@ export function TasksScreen() {
             tintColor={colors.primaryAction}
           />
         }
-        testID="tasks-scroll-view"
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
-          <ListTodo color={colors.primaryAction} size={24} />
-          <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
-            Tasks
-          </AppText>
-          {canCreateTasks && (
+        renderItem={({ item }) => <TaskCard task={item} />}
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        testID="tasks-list"
+      />
+      <BottomSheet
+        footer={
+          <View
+            style={{
+              flexDirection: 'row',
+              gap: themeTokens.spacing.sm,
+              paddingTop: themeTokens.spacing.md,
+            }}
+          >
             <AppButton
-              accessibilityLabel="Create task"
-              onPress={() => router.push('/task-create')}
-              style={{ minWidth: 104 }}
+              accessibilityLabel="Reset task filters"
+              onPress={() => {
+                setDraftStatus('');
+                setDraftPriority('');
+              }}
+              style={{ flex: 1 }}
+              variant="outline"
+            >
+              Reset
+            </AppButton>
+            <AppButton
+              accessibilityLabel="Apply task filters"
+              onPress={() => {
+                setStatusFilter(draftStatus);
+                setPriorityFilter(draftPriority);
+                setFiltersVisible(false);
+              }}
+              style={{ flex: 1 }}
               variant="primary"
             >
-              Create
+              Apply Filters
             </AppButton>
-          )}
-        </View>
-
-        <View
-          accessibilityRole="tablist"
-          style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}
-        >
-          {views.map((view) => (
-            <FilterChip
-              key={view.value}
-              label={view.label}
-              onPress={() => setRelation(view.value)}
-              selected={relation === view.value}
-            />
-          ))}
-        </View>
-
-        <View
-          style={{
-            minHeight: 52,
-            flexDirection: 'row',
-            alignItems: 'center',
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: themeTokens.radius.md,
-            paddingLeft: themeTokens.spacing.sm,
-            backgroundColor: colors.surface,
-          }}
-        >
-          <TextInput
-            accessibilityLabel="Search tasks"
-            autoCapitalize="none"
-            autoCorrect={false}
-            maxLength={100}
-            onChangeText={setQuery}
-            placeholder="Search tasks"
-            placeholderTextColor={colors.textMuted}
-            returnKeyType="search"
-            style={{
-              flex: 1,
-              minHeight: 50,
-              color: colors.text,
-              paddingHorizontal: themeTokens.spacing.sm,
-              fontSize: 16,
-            }}
-            testID="task-search-input"
-            value={query}
-          />
-        </View>
-
-        <View style={{ gap: themeTokens.spacing.xs }}>
-          <AppText variant="label">Status</AppText>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
-            <FilterChip
-              label="Any status"
-              onPress={() => setStatusFilter('')}
-              selected={!statusFilter}
-            />
-            {TASK_STATUSES.map((value) => (
+          </View>
+        }
+        onClose={dismissFilters}
+        testID="task-filter-sheet"
+        title="Filters"
+        visible={filtersVisible}
+      >
+        <View style={{ gap: themeTokens.spacing.md }}>
+          <View style={{ gap: themeTokens.spacing.xs }}>
+            <AppText variant="label">Status</AppText>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
+              <FilterChip label="Any" onPress={() => setDraftStatus('')} selected={!draftStatus} />
+              {TASK_STATUSES.map((value) => (
+                <FilterChip
+                  key={value}
+                  label={labelFor(value)}
+                  onPress={() => setDraftStatus(value)}
+                  selected={draftStatus === value}
+                />
+              ))}
+            </View>
+          </View>
+          <View style={{ gap: themeTokens.spacing.xs }}>
+            <AppText variant="label">Priority</AppText>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
               <FilterChip
-                key={value}
-                label={labelFor(value)}
-                onPress={() => setStatusFilter(value)}
-                selected={statusFilter === value}
+                label="Any"
+                onPress={() => setDraftPriority('')}
+                selected={!draftPriority}
               />
-            ))}
+              {TASK_PRIORITIES.map((value) => (
+                <FilterChip
+                  key={value}
+                  label={labelFor(value)}
+                  onPress={() => setDraftPriority(value)}
+                  selected={draftPriority === value}
+                />
+              ))}
+            </View>
           </View>
         </View>
-
-        <View style={{ gap: themeTokens.spacing.xs }}>
-          <AppText variant="label">Priority</AppText>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
-            <FilterChip
-              label="Any priority"
-              onPress={() => setPriorityFilter('')}
-              selected={!priorityFilter}
-            />
-            {TASK_PRIORITIES.map((value) => (
-              <FilterChip
-                key={value}
-                label={labelFor(value)}
-                onPress={() => setPriorityFilter(value)}
-                selected={priorityFilter === value}
-              />
-            ))}
-          </View>
-        </View>
-
-        <View
-          accessibilityLabel="Due date filtering is unavailable from the task service"
-          accessibilityRole="text"
-          style={{
-            minHeight: themeTokens.touchTarget.minimum,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: themeTokens.spacing.xs,
-            paddingHorizontal: themeTokens.spacing.sm,
-            borderRadius: themeTokens.radius.sm,
-            backgroundColor: colors.surfaceSubtle,
-          }}
-        >
-          <CalendarDays color={colors.textMuted} size={18} />
-          <AppText tone="secondary" variant="caption">
-            Due-date filtering is not available in the current task API.
-          </AppText>
-        </View>
-
-        {error && (
-          <InlineError
-            message={error}
-            onRetry={() => setRetry((value) => value + 1)}
-            retryLabel="Retry loading tasks"
-          />
-        )}
-
-        {loading && !currentPage ? <LoadingState label="Loading tasks" /> : null}
-        {currentPage?.tasks.map((task) => <TaskCard key={task.id} task={task} />)}
-
-        {!loading && !error && currentPage && currentPage.tasks.length === 0 && (
-          <View style={{ alignItems: 'center', gap: themeTokens.spacing.sm, paddingVertical: 24 }}>
-            <AppText variant="heading">No tasks found</AppText>
-            <AppText style={{ textAlign: 'center' }} tone="secondary">
-              {query || statusFilter || priorityFilter
-                ? 'Try changing your search or filters.'
-                : relation === 'assigned'
-                  ? 'Tasks assigned to you will appear here.'
-                  : relation === 'created'
-                    ? 'Tasks you create will appear here.'
-                    : 'There are no tasks in this workspace.'}
-            </AppText>
-          </View>
-        )}
-
-        {currentPage && currentPage.tasks.length > 0 && currentPage.tasks.length < currentPage.total && (
-          <AppButton
-            accessibilityLabel="Load more tasks"
-            loading={loadingMore}
-            onPress={() => void loadMore()}
-            variant="outline"
-          >
-            Load more
-          </AppButton>
-        )}
-
-        {currentPage && currentPage.tasks.length > 0 && (
-          <AppText accessibilityLiveRegion="polite" style={{ textAlign: 'center' }} tone="subtle" variant="caption">
-            Showing {currentPage.tasks.length} of {currentPage.total} tasks
-          </AppText>
-        )}
-      </ScrollView>
+      </BottomSheet>
     </AppScreen>
   );
 }

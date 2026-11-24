@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
-import { router, triggerFocusEffectsForTest } from 'expo-router';
+import { router } from 'expo-router';
 import { Alert } from 'react-native';
 
 import { ApiError, ApiNetworkError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
+import { triggerFocusEffectsForTest } from '../../test/mocks/expo-router';
 import { renderWithProviders } from '../../test/render';
 import { GlobalSearchScreen } from './GlobalSearchScreen';
 import { HomeScreen } from './HomeScreen';
@@ -34,7 +35,11 @@ const beta = {
   company: { id: 'workspace-2', name: 'Beta Workspace', companyCode: 'BETA-2' },
 };
 
-const authState = (activeWorkspace = alpha, logout = jest.fn(async () => undefined)) =>
+const authState = (
+  activeWorkspace = alpha,
+  logout = jest.fn(async () => undefined),
+  permissionOverrides: Record<string, boolean> = {},
+) =>
   ({
     status: 'authenticated',
     user: {
@@ -53,7 +58,7 @@ const authState = (activeWorkspace = alpha, logout = jest.fn(async () => undefin
       role: activeWorkspace.role,
       rolePermissions: {},
       individualOverrides: {},
-      permissions: {},
+      permissions: permissionOverrides,
     },
     workspacePermissionStatus: 'ready',
     logout,
@@ -112,7 +117,7 @@ describe('P11 Home, Global Search, and More screens', () => {
 
     expect(await screen.findByText('Hello, Ada')).toBeTruthy();
     expect(screen.getByText('Alpha Workspace')).toBeTruthy();
-    expect(screen.getByText('Needs my attention')).toBeTruthy();
+    expect(screen.getByText('Needs attention')).toBeTruthy();
     expect(screen.getByText('Due soon')).toBeTruthy();
     expect(await screen.findAllByText('Prepare quarterly plan')).not.toHaveLength(0);
     expect(await screen.findAllByText('Today')).not.toHaveLength(0);
@@ -131,7 +136,7 @@ describe('P11 Home, Global Search, and More screens', () => {
     expect(await screen.findAllByText('Prepare quarterly plan')).not.toHaveLength(0);
 
     await fireEvent.press(
-      screen.getByRole('button', { name: 'Open task Prepare quarterly plan' }),
+      screen.getAllByRole('button', { name: 'Open task Prepare quarterly plan' })[0],
     );
     expect(router.push).toHaveBeenCalledWith('/tasks/workspace-1-task-1');
 
@@ -140,6 +145,54 @@ describe('P11 Home, Global Search, and More screens', () => {
     });
     expect(await screen.findAllByText('Recently updated task')).not.toHaveLength(0);
     expect(homeService.getDashboardData).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens the profile drawer and navigates to Tasks', async () => {
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByText('Hello, Ada')).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Open profile and navigation menu' }));
+    expect(screen.getByText('ada@example.test')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Navigate to Tasks' }));
+
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/(tabs)/tasks'));
+  });
+
+  it('switches workspaces and signs out from the profile drawer', async () => {
+    const logout = jest.fn(async () => undefined);
+    jest.mocked(useAuth).mockReturnValue(authState(alpha, logout));
+    const view = await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByText('Hello, Ada')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Open profile and navigation menu' }));
+    await fireEvent.press(
+      screen.getByRole('button', { name: /Switch workspace, current workspace Alpha Workspace/ }),
+    );
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/workspace-select'));
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Open profile and navigation menu' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Sign out' }));
+    await waitFor(() => {
+      expect(logout).toHaveBeenCalledTimes(1);
+      expect(router.replace).toHaveBeenCalledWith('/sign-in');
+    });
+    view.unmount();
+  });
+
+  it('shows only permitted Home quick-access actions and routes them correctly', async () => {
+    jest.mocked(useAuth).mockReturnValue(
+      authState(
+        alpha,
+        jest.fn(async () => undefined),
+        { create_tasks: true },
+      ),
+    );
+    await renderWithProviders(<HomeScreen />);
+    expect(await screen.findByText('Quick access')).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Open Create Task' }));
+    expect(router.push).toHaveBeenCalledWith('/task-create');
+    await fireEvent.press(screen.getByRole('button', { name: 'Open Projects' }));
+    expect(router.push).toHaveBeenCalledWith('/(tabs)/projects');
   });
 
   it('removes previous-workspace dashboard data before rendering the new selection', async () => {

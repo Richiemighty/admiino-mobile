@@ -1,8 +1,8 @@
 import { router, useFocusEffect } from 'expo-router';
 import { ArrowLeft, ChevronRight } from 'lucide-react-native';
-import { useCallback, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Pressable, View } from 'react-native';
+import { useCallback, useRef, useState } from 'react';
+import { Pressable, ScrollView, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
@@ -11,9 +11,11 @@ import {
   AppCard,
   AppScreen,
   AppText,
+  BottomSheet,
   IconButton,
   InlineError,
   LoadingState,
+  UserAvatar,
 } from '../../components/ui';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
@@ -23,8 +25,8 @@ import {
   type TaskDependencyGraph,
   type TaskDetails,
   type TaskRecord,
-  type TaskStatus,
   taskService,
+  type TaskStatus,
 } from './service';
 
 interface LoadedTask {
@@ -50,9 +52,12 @@ function personName(person: TaskRecord['creator']): string {
     : 'Not assigned';
 }
 
-function fullDate(value: string | null | undefined): string {
+function fullDate(value: string | null | undefined, isDeadline = false): string {
   if (!value) return 'No deadline';
-  const date = new Date(value);
+  const dateOnly = isDeadline ? /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(value) : null;
+  const date = dateOnly
+    ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]), 12)
+    : new Date(value);
   return Number.isNaN(date.getTime())
     ? 'Deadline unavailable'
     : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date);
@@ -76,20 +81,17 @@ function statusUpdateError(error: unknown): string {
     return 'The status update could not be confirmed because the network is unavailable.';
   if (error instanceof ApiTimeoutError)
     return 'The status update timed out. The displayed status has not been changed.';
-  if (error instanceof ApiError && (error.status === 400 || error.status === 403 || error.status === 409))
+  if (
+    error instanceof ApiError &&
+    (error.status === 400 || error.status === 403 || error.status === 409)
+  )
     return 'The server rejected this status change. The displayed status has not been changed.';
   return 'The status could not be updated. The displayed status has not been changed.';
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <View style={{ gap: themeTokens.spacing.sm }}>
+    <View style={{ gap: themeTokens.spacing.xs }}>
       <AppText accessibilityRole="header" variant="label">
         {title}
       </AppText>
@@ -99,16 +101,59 @@ function Section({
 }
 
 function DetailLine({ label, value }: { label: string; value: string }) {
-  const { colors } = useAppTheme();
-  return (
-    <View style={{ flexDirection: 'row', gap: themeTokens.spacing.sm }}>
-      <AppText style={{ width: 96 }} tone="secondary" variant="caption">
+  return value ? (
+    <View
+      style={{
+        minHeight: 30,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: themeTokens.spacing.sm,
+      }}
+    >
+      <AppText style={{ width: 88 }} tone="secondary" variant="caption">
         {label}
       </AppText>
       <AppText style={{ flex: 1 }} variant="caption">
         {value}
       </AppText>
-      <View style={{ width: 1, backgroundColor: colors.border }} />
+    </View>
+  ) : null;
+}
+
+function StatusBadge({ status }: { status: TaskStatus | null }) {
+  const { colors } = useAppTheme();
+  const tone = status ? themeTokens.taskStatusTone[status] : 'neutral';
+  return (
+    <View
+      style={{
+        borderRadius: themeTokens.radius.pill,
+        backgroundColor: colors.semantic[tone].background,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+      }}
+    >
+      <AppText tone={tone === 'neutral' ? 'secondary' : tone} variant="caption">
+        {labelFor(status)}
+      </AppText>
+    </View>
+  );
+}
+
+function PriorityBadge({ priority }: { priority: TaskRecord['priority'] }) {
+  const { colors } = useAppTheme();
+  const tone = themeTokens.taskPriorityTone[priority ?? 'medium'];
+  return (
+    <View
+      style={{
+        borderRadius: themeTokens.radius.pill,
+        backgroundColor: colors.semantic[tone].background,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+      }}
+    >
+      <AppText tone={tone === 'neutral' ? 'secondary' : tone} variant="caption">
+        {labelFor(priority)} priority
+      </AppText>
     </View>
   );
 }
@@ -135,11 +180,11 @@ function StatusOption({
         justifyContent: 'center',
         borderRadius: themeTokens.radius.pill,
         paddingHorizontal: themeTokens.spacing.md,
-        backgroundColor: colors.primarySurface,
+        backgroundColor: colors.surfaceSubtle,
         opacity: disabled ? 0.5 : 1,
       }}
     >
-      <AppText tone="link" variant="caption">
+      <AppText tone="secondary" variant="caption">
         {labelFor(status)}
       </AppText>
     </Pressable>
@@ -147,13 +192,7 @@ function StatusOption({
 }
 
 export function TaskDetailsScreen({ taskId }: { taskId: string }) {
-  const {
-    activeWorkspace,
-    permissions,
-    status,
-    workspacePermissionStatus,
-    logout,
-  } = useAuth();
+  const { activeWorkspace, permissions, status, workspacePermissionStatus, logout } = useAuth();
   const { colors } = useAppTheme();
   const workspaceId = activeWorkspace?.companyId ?? null;
   const [loadedTask, setLoadedTask] = useState<LoadedTask | null>(null);
@@ -168,6 +207,8 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusSheetVisible, setStatusSheetVisible] = useState(false);
+  const [assigneesSheetVisible, setAssigneesSheetVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -187,6 +228,7 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
     useCallback(() => {
       if (!isReady || !workspaceId || !taskId) return undefined;
       const controller = new AbortController();
+      const requestAttempt = retry;
       request.current?.abort();
       request.current = controller;
       setLoading(true);
@@ -197,7 +239,7 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
       void taskService
         .getTask(taskId, workspaceId, controller.signal)
         .then((details) => {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted || requestAttempt !== retry) return;
           setLoadedTask({ workspaceId, taskId, details });
           if (details.task.teamId) {
             void taskService
@@ -237,7 +279,7 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
             });
         })
         .catch(async (requestError: unknown) => {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted || requestAttempt !== retry) return;
           if (requestError instanceof ApiError && requestError.status === 401) {
             try {
               await logout();
@@ -252,7 +294,7 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
           }
         })
         .finally(() => {
-          if (!controller.signal.aborted) setLoading(false);
+          if (!controller.signal.aborted && requestAttempt === retry) setLoading(false);
         });
       return () => controller.abort();
     }, [isReady, logout, retry, taskId, workspaceId]),
@@ -287,7 +329,10 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
         router.replace('/workspace-suspended');
       } else {
         setStatusError(statusUpdateError(updateError));
-        if (!(updateError instanceof ApiNetworkError) && !(updateError instanceof ApiTimeoutError)) {
+        if (
+          !(updateError instanceof ApiNetworkError) &&
+          !(updateError instanceof ApiTimeoutError)
+        ) {
           try {
             const latest = await taskService.getTask(taskId, current.workspaceId);
             setLoadedTask({ ...current, details: latest });
@@ -339,8 +384,11 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
   const canChangeStatus = access?.canEdit === true && access.readOnly === false;
   const isMember = permissions?.role === 'member';
   const canEditFields = canChangeStatus && !isMember;
-  const assignedPeople =
-    task.assignees?.length ? task.assignees : task.assignee ? [task.assignee] : [];
+  const assignedPeople = task.assignees?.length
+    ? task.assignees
+    : task.assignee
+      ? [task.assignee]
+      : [];
   const assignedToCurrentUser = assignedPeople.some((person) => person.id === permissions?.userId);
   const isTeamTask = Boolean(task.teamId);
   const teamLeadUserId =
@@ -354,30 +402,41 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
     !['owner', 'admin', 'manager'].includes(permissions?.role ?? '') &&
     task.creator?.id !== permissions?.userId &&
     !isTeamLead;
-  const teamAssigneeAwaitingReview =
-    teamAssigneeMayNotComplete && task.status === 'in_review';
-  const availableStatuses = TASK_STATUSES.filter(
-    (candidate) =>
-      candidate !== task.status &&
-      !(task.status === 'in_review' && candidate === 'completed') &&
-      !(teamAssigneeMayNotComplete && candidate === 'completed') &&
-      !(teamAssigneeAwaitingReview && candidate !== 'pending'),
-  );
+  const teamAssigneeAwaitingReview = teamAssigneeMayNotComplete && task.status === 'in_review';
+  const availableStatuses = task.status
+    ? TASK_STATUSES.filter(
+        (candidate) =>
+          candidate !== task.status &&
+          !(task.status === 'in_review' && candidate === 'completed') &&
+          !(teamAssigneeMayNotComplete && candidate === 'completed') &&
+          !(teamAssigneeAwaitingReview && candidate !== 'pending'),
+      )
+    : [];
   const activity = [...(task.activities ?? [])].reverse();
   const attachments = task.attachments ?? [];
   const subtasks = task.subtasks ?? [];
+  const dependencies = currentDependencies
+    ? [...currentDependencies.dependsOn, ...currentDependencies.blocking]
+    : [];
 
   return (
     <AppScreen padding="md" scrollable>
-      <View style={{ width: '100%', maxWidth: 720, alignSelf: 'center', gap: themeTokens.spacing.lg }}>
+      <View
+        style={{ width: '100%', maxWidth: 720, alignSelf: 'center', gap: themeTokens.spacing.md }}
+      >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
           <IconButton
             accessibilityLabel="Back to Tasks"
             icon={<ArrowLeft color={colors.text} size={22} />}
             onPress={() => router.replace('/(tabs)/tasks')}
           />
-          <AppText accessibilityRole="header" numberOfLines={1} style={{ flex: 1 }} variant="heading">
-            Task details
+          <AppText
+            accessibilityRole="header"
+            numberOfLines={1}
+            style={{ flex: 1 }}
+            variant="heading"
+          >
+            Task Details
           </AppText>
           {canEditFields && (
             <AppButton
@@ -398,81 +457,126 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
           />
         )}
 
-        <AppCard style={{ gap: themeTokens.spacing.sm }}>
+        <AppCard padding="md" style={{ gap: themeTokens.spacing.sm, borderWidth: 0 }}>
           <AppText accessibilityRole="header" variant="heading">
             {task.title}
           </AppText>
-          <AppText style={{ lineHeight: 24 }} tone="secondary">
-            {task.description?.trim() || 'No description provided.'}
-          </AppText>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
-            <AppText tone="info" variant="caption">
-              {labelFor(task.status)}
+          {task.description?.trim() ? (
+            <AppText style={{ lineHeight: 22 }} tone="secondary">
+              {task.description.trim()}
             </AppText>
-            <AppText tone="secondary" variant="caption">
-              {labelFor(task.priority)} priority
-            </AppText>
+          ) : null}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: themeTokens.spacing.xs,
+            }}
+          >
+            <StatusBadge status={task.status} />
+            <PriorityBadge priority={task.priority} />
+            {canChangeStatus && availableStatuses.length > 0 && (
+              <AppButton
+                accessibilityLabel="Change status"
+                onPress={() => setStatusSheetVisible(true)}
+                style={{ minHeight: 36, marginLeft: 'auto' }}
+                variant="outline"
+              >
+                Change status
+              </AppButton>
+            )}
           </View>
           {task.status === 'in_review' && (
             <AppText accessibilityRole="text" tone="warning" variant="caption">
-              This task is awaiting review. Review approval actions are not available in mobile.
+              Awaiting review
             </AppText>
           )}
         </AppCard>
 
         <Section title="Task information">
-          <AppCard style={{ gap: themeTokens.spacing.sm }}>
-            <DetailLine label="Deadline" value={fullDate(task.deadline)} />
+          <AppCard padding="sm" style={{ gap: themeTokens.spacing.xxs, borderWidth: 0 }}>
+            <DetailLine label="Due date" value={fullDate(task.deadline, true)} />
             <DetailLine label="Created by" value={personName(task.creator)} />
-            <DetailLine
-              label="Assignees"
-              value={assignedPeople.length ? assignedPeople.map(personName).join(', ') : 'Unassigned'}
-            />
             <DetailLine label="Project" value={task.project?.name ?? 'No project'} />
             <DetailLine label="Team" value={task.team?.name ?? 'No team'} />
           </AppCard>
         </Section>
 
-        <Section title="Status">
-          {canChangeStatus ? (
-            <>
-              <AppText tone="secondary" variant="caption">
-                Status changes are checked by the server. Review completion is not offered here.
-              </AppText>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
-                {availableStatuses.map((value) => (
-                  <StatusOption
-                    disabled={updating}
-                    key={value}
-                    onPress={() => void changeStatus(value)}
-                    status={value}
-                  />
+        <View style={{ gap: themeTokens.spacing.xs }}>
+          <AppText accessibilityRole="header" variant="label">
+            Assignees ({assignedPeople.length})
+          </AppText>
+          {assignedPeople.length > 0 ? (
+            <Pressable
+              accessibilityLabel={`Show all assignees, ${assignedPeople.length}`}
+              accessibilityRole="button"
+              onPress={() => setAssigneesSheetVisible(true)}
+              style={{
+                minHeight: 48,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: themeTokens.spacing.sm,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {assignedPeople.slice(0, 3).map((person, index) => (
+                  <View key={person.id} style={{ marginLeft: index === 0 ? 0 : -8 }}>
+                    <UserAvatar name={personName(person)} size={34} />
+                  </View>
                 ))}
+                {assignedPeople.length > 3 && (
+                  <AppText
+                    style={{ marginLeft: themeTokens.spacing.xs }}
+                    tone="secondary"
+                    variant="caption"
+                  >
+                    +{assignedPeople.length - 3}
+                  </AppText>
+                )}
               </View>
-              {updating && <LoadingState label="Updating task status" />}
-              {statusError && <InlineError message={statusError} />}
-              {statusMessage && (
-                <AppText accessibilityLiveRegion="polite" tone="success" variant="caption">
-                  {statusMessage}
-                </AppText>
-              )}
-            </>
+              <AppText numberOfLines={1} style={{ flex: 1 }} tone="secondary" variant="caption">
+                {assignedPeople.length === 1 ? personName(assignedPeople[0]) : 'View assignees'}
+              </AppText>
+              <ChevronRight color={colors.textMuted} size={18} />
+            </Pressable>
           ) : (
-            <AppText tone="secondary">
-              This task is read-only. You do not have permission to change its status.
-            </AppText>
-          )}
-          {isMember && canChangeStatus && (
             <AppText tone="secondary" variant="caption">
-              Your task access allows status changes. Other task fields are not editable under the current member update contract.
+              Unassigned
             </AppText>
           )}
-          {teamLeadError && <AppText tone="warning" variant="caption">{teamLeadError}</AppText>}
-        </Section>
+        </View>
 
-        <Section title={`Subtasks (${subtasks.length})`}>
-          {subtasks.length ? (
-            subtasks.map((subtask) => (
+        {statusError && <InlineError message={statusError} />}
+        {statusMessage && (
+          <AppText accessibilityLiveRegion="polite" tone="success" variant="caption">
+            {statusMessage}
+          </AppText>
+        )}
+        {!canChangeStatus && (
+          <AppText tone="secondary" variant="caption">
+            Status cannot be changed for this task.
+          </AppText>
+        )}
+        {canChangeStatus && availableStatuses.length === 0 && (
+          <AppText tone="secondary" variant="caption">
+            No status changes are available.
+          </AppText>
+        )}
+        {isMember && canChangeStatus && (
+          <AppText tone="secondary" variant="caption">
+            Other task details are read-only.
+          </AppText>
+        )}
+        {teamLeadError && (
+          <AppText tone="warning" variant="caption">
+            Some status changes are unavailable.
+          </AppText>
+        )}
+
+        {subtasks.length > 0 && (
+          <Section title={`Subtasks (${subtasks.length})`}>
+            {subtasks.map((subtask) => (
               <Pressable
                 accessibilityLabel={`Open subtask ${subtask.title}`}
                 accessibilityRole="button"
@@ -496,59 +600,51 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
                 </View>
                 <ChevronRight color={colors.textMuted} size={18} />
               </Pressable>
-            ))
-          ) : (
-            <AppText tone="secondary">No subtasks.</AppText>
-          )}
-        </Section>
+            ))}
+          </Section>
+        )}
 
-        <Section title="Dependencies">
-          {dependenciesError ? (
-            <InlineError message={dependenciesError} />
-          ) : currentDependencies ? (
-            <>
-              {currentDependencies.isBlocked && (
-                <AppText tone="warning" variant="caption">
-                  Blocked by {currentDependencies.unresolvedDependencyCount} unresolved dependencies.
-                </AppText>
-              )}
-              {currentDependencies.dependsOn.map((dependency) => (
-                <DependencyRow key={dependency.linkId} dependency={dependency} />
-              ))}
-              {currentDependencies.blocking.map((dependency) => (
-                <DependencyRow blocking key={dependency.linkId} dependency={dependency} />
-              ))}
-              {!currentDependencies.dependsOn.length && !currentDependencies.blocking.length && (
-                <AppText tone="secondary">No task dependencies.</AppText>
-              )}
-            </>
-          ) : (
-            <LoadingState label="Loading task dependencies" />
-          )}
-        </Section>
+        {(dependenciesError || dependencies.length > 0 || currentDependencies?.isBlocked) && (
+          <Section title={`Dependencies${dependencies.length ? ` (${dependencies.length})` : ''}`}>
+            {dependenciesError ? (
+              <InlineError message={dependenciesError} />
+            ) : currentDependencies ? (
+              <>
+                {currentDependencies.isBlocked && (
+                  <AppText tone="warning" variant="caption">
+                    Blocked by {currentDependencies.unresolvedDependencyCount} unresolved
+                    dependencies.
+                  </AppText>
+                )}
+                {currentDependencies.dependsOn.map((dependency) => (
+                  <DependencyRow key={dependency.linkId} dependency={dependency} />
+                ))}
+                {currentDependencies.blocking.map((dependency) => (
+                  <DependencyRow blocking key={dependency.linkId} dependency={dependency} />
+                ))}
+              </>
+            ) : null}
+          </Section>
+        )}
 
-        <Section title={`Attachments (${attachments.length})`}>
-          {attachments.length ? (
-            attachments.map((attachment, index) => (
-              <AppCard key={attachment.id ?? `${attachment.fileName ?? attachment.name}-${index}`} padding="sm">
+        {attachments.length > 0 && (
+          <Section title={`Attachments (${attachments.length})`}>
+            {attachments.map((attachment, index) => (
+              <AppCard
+                key={attachment.id ?? `${attachment.fileName ?? attachment.name}-${index}`}
+                padding="sm"
+              >
                 <AppText numberOfLines={2} variant="caption">
                   {attachment.fileName ?? attachment.name ?? 'Task attachment'}
                 </AppText>
               </AppCard>
-            ))
-          ) : (
-            <AppText tone="secondary">No attachments.</AppText>
-          )}
-          {attachments.length > 0 && (
-            <AppText tone="secondary" variant="caption">
-              Attachment viewing is not available in this phase.
-            </AppText>
-          )}
-        </Section>
+            ))}
+          </Section>
+        )}
 
-        <Section title={`Recent activity (${activity.length})`}>
-          {activity.length ? (
-            activity.map((item) => (
+        {activity.length > 0 && (
+          <Section title={`Recent activity (${activity.length})`}>
+            {activity.map((item) => (
               <AppCard key={item.id} padding="sm">
                 <AppText variant="caption">
                   {personName(item.actor)} · {labelFor(item.actionType)}
@@ -557,12 +653,58 @@ export function TaskDetailsScreen({ taskId }: { taskId: string }) {
                   {fullDate(item.createdAt)}
                 </AppText>
               </AppCard>
-            ))
-          ) : (
-            <AppText tone="secondary">No recent activity.</AppText>
-          )}
-        </Section>
+            ))}
+          </Section>
+        )}
       </View>
+      <BottomSheet
+        onClose={() => setStatusSheetVisible(false)}
+        title="Change status"
+        visible={statusSheetVisible}
+      >
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
+          {availableStatuses.map((value) => (
+            <StatusOption
+              disabled={updating}
+              key={value}
+              onPress={() => {
+                setStatusSheetVisible(false);
+                void changeStatus(value);
+              }}
+              status={value}
+            />
+          ))}
+        </View>
+        {updating && <LoadingState label="Updating task status" />}
+      </BottomSheet>
+      <BottomSheet
+        onClose={() => setAssigneesSheetVisible(false)}
+        title={`Assignees (${assignedPeople.length})`}
+        visible={assigneesSheetVisible}
+      >
+        <ScrollView
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          style={{ maxHeight: 360 }}
+        >
+          <View style={{ gap: themeTokens.spacing.xs }}>
+            {assignedPeople.map((person) => (
+              <View
+                key={person.id}
+                style={{
+                  minHeight: 48,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: themeTokens.spacing.sm,
+                }}
+              >
+                <UserAvatar name={personName(person)} size={36} />
+                <AppText variant="label">{personName(person)}</AppText>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </BottomSheet>
     </AppScreen>
   );
 }
@@ -576,9 +718,7 @@ function DependencyRow({
 }) {
   const { colors } = useAppTheme();
   const relatedTask = dependency.task;
-  const title = dependency.restricted
-    ? 'Restricted task'
-    : relatedTask?.title ?? 'Task';
+  const title = dependency.restricted ? 'Restricted task' : (relatedTask?.title ?? 'Task');
   const content = (
     <>
       <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
@@ -598,7 +738,12 @@ function DependencyRow({
     alignItems: 'center' as const,
     gap: themeTokens.spacing.sm,
   };
-  if (!relatedTask) return <AppCard padding="sm" style={style}>{content}</AppCard>;
+  if (!relatedTask)
+    return (
+      <AppCard padding="sm" style={style}>
+        {content}
+      </AppCard>
+    );
   return (
     <AppCard
       accessibilityLabel={`Open related task ${title}`}

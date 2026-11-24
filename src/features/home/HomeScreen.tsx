@@ -1,15 +1,18 @@
 import { router, useFocusEffect } from 'expo-router';
 import {
-  ArrowRightLeft,
   CalendarDays,
+  ChevronDown,
   ChevronRight,
+  CircleAlert,
+  ClipboardList,
   FolderKanban,
-  Inbox,
   ListTodo,
+  Plus,
   Search,
+  ShieldAlert,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PanResponder, Pressable, RefreshControl, ScrollView, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
@@ -26,6 +29,7 @@ import {
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { getDueDateLabel, getDueSoonTasks, getNeedsAttentionTasks } from './dashboard-utils';
+import { NavigationDrawer } from './NavigationDrawer';
 import { type HomeDashboardData, homeService } from './service';
 
 function firstName(value: string | undefined): string {
@@ -85,7 +89,11 @@ function TaskRow({
       accessibilityLabel={`Open task ${task.title}`}
       onPress={onPress}
       padding="sm"
-      style={{ gap: themeTokens.spacing.xxs }}
+      style={{
+        gap: themeTokens.spacing.xxs,
+        borderWidth: 0,
+        backgroundColor: colors.surfaceSubtle,
+      }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
         <View style={{ flex: 1, gap: themeTokens.spacing.xxs }}>
@@ -116,6 +124,7 @@ export function HomeScreen() {
   const { user, activeWorkspace, permissions, status, workspacePermissionStatus, logout } =
     useAuth();
   const { colors } = useAppTheme();
+  const [drawerVisible, setDrawerVisible] = useState(false);
   const logoutRef = useRef(logout);
   useEffect(() => {
     logoutRef.current = logout;
@@ -129,6 +138,24 @@ export function HomeScreen() {
   const workspaceId = activeWorkspace?.companyId ?? null;
   const currentDashboard = dashboard?.workspaceId === workspaceId ? dashboard : null;
   const errorMessage = errorState?.workspaceId === workspaceId ? errorState.message : null;
+  const canCreateTasks =
+    workspacePermissionStatus === 'ready' &&
+    permissions?.permissions.create_tasks === true &&
+    ['owner', 'admin', 'manager', 'member'].includes(permissions.role);
+  const edgeSwipeResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+          !drawerVisible &&
+          gesture.x0 < 28 &&
+          gesture.dx > 22 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+        onPanResponderRelease: (_event, gesture) => {
+          if (gesture.dx > 50) setDrawerVisible(true);
+        },
+      }),
+    [drawerVisible],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -137,6 +164,7 @@ export function HomeScreen() {
       }
 
       const controller = new AbortController();
+      const requestAttempt = loadAttempt;
       void Promise.resolve()
         .then(() => {
           if (controller.signal.aborted) return undefined;
@@ -146,14 +174,15 @@ export function HomeScreen() {
           return homeService.getDashboardData(workspaceId, controller.signal);
         })
         .then((response) => {
-          if (!controller.signal.aborted && response) setDashboard(response);
+          if (!controller.signal.aborted && requestAttempt === loadAttempt && response) {
+            setDashboard(response);
+          }
         })
         .catch(async (requestError: unknown) => {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted || requestAttempt !== loadAttempt) return;
           try {
-            const wasRedirected = await routeForAccessError(
-              requestError,
-              () => logoutRef.current(),
+            const wasRedirected = await routeForAccessError(requestError, () =>
+              logoutRef.current(),
             );
             if (!wasRedirected) {
               setErrorState({ workspaceId, message: requestErrorMessage(requestError) });
@@ -166,7 +195,7 @@ export function HomeScreen() {
           }
         })
         .finally(() => {
-          if (!controller.signal.aborted) setLoading(false);
+          if (!controller.signal.aborted && requestAttempt === loadAttempt) setLoading(false);
         });
 
       return () => controller.abort();
@@ -177,13 +206,16 @@ export function HomeScreen() {
   const summary = currentDashboard?.summary;
   const attentionTasks = currentDashboard ? getNeedsAttentionTasks(currentDashboard.tasks) : [];
   const dueSoonTasks = currentDashboard ? getDueSoonTasks(currentDashboard.tasks) : [];
-  const role = permissions?.role
-    ? permissions.role.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
-    : 'Membership verified';
   const displayName =
     [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() ||
     user?.email ||
     'Admiino user';
+  const quickAccess = [
+    ...(canCreateTasks
+      ? [{ title: 'Create Task', route: '/task-create' as const, Icon: Plus }]
+      : []),
+    { title: 'Projects', route: '/(tabs)/projects' as const, Icon: FolderKanban },
+  ];
 
   if (!currentDashboard && (loading || !errorMessage)) {
     return (
@@ -194,198 +226,272 @@ export function HomeScreen() {
   }
 
   return (
-    <AppScreen padding="xl">
-      <ScrollView
-        contentContainerStyle={{
-          width: '100%',
-          maxWidth: 720,
-          alignSelf: 'center',
-          gap: themeTokens.spacing.lg,
-          paddingBottom: themeTokens.spacing.lg,
-        }}
-        refreshControl={
-          <RefreshControl
-            colors={[colors.primaryAction]}
-            onRefresh={retry}
-            refreshing={loading && Boolean(currentDashboard)}
-            tintColor={colors.primaryAction}
-          />
-        }
-        testID="home-scroll-view"
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
-          <View style={{ flex: 1, gap: themeTokens.spacing.xs }}>
-            <AppText accessibilityRole="header" variant="heading">
-              Hello, {firstName(user?.firstName)}
-            </AppText>
-            <AppButton
-              accessibilityLabel={`Switch workspace from ${activeWorkspace?.company.name ?? 'current workspace'}`}
-              icon={<ArrowRightLeft color={colors.primaryAction} size={16} />}
-              onPress={() => router.push('/workspace-select')}
-              style={{ alignSelf: 'flex-start', minHeight: 40, paddingHorizontal: 10 }}
-              variant="ghost"
-            >
-              {activeWorkspace?.company.name ?? 'Choose workspace'}
-            </AppButton>
-          </View>
-          <IconButton
-            accessibilityLabel="Open Global Search"
-            icon={<Search color={colors.text} size={22} />}
-            onPress={() => router.push('/search')}
-          />
-          <UserAvatar name={displayName} />
-        </View>
-
-        {errorMessage && (
-          <InlineError
-            message={errorMessage}
-            onRetry={retry}
-            retryLabel="Retry loading your work"
-          />
-        )}
-
-        {summary && (
-          <View style={{ gap: themeTokens.spacing.sm }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'baseline',
-                justifyContent: 'space-between',
-              }}
-            >
+    <AppScreen padding="md">
+      <View {...edgeSwipeResponder.panHandlers} style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={{
+            width: '100%',
+            maxWidth: 720,
+            alignSelf: 'center',
+            gap: themeTokens.spacing.md,
+            paddingBottom: themeTokens.spacing.lg,
+          }}
+          refreshControl={
+            <RefreshControl
+              colors={[colors.primaryAction]}
+              onRefresh={retry}
+              refreshing={loading && Boolean(currentDashboard)}
+              tintColor={colors.primaryAction}
+            />
+          }
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          testID="home-scroll-view"
+        >
+          <View style={{ gap: themeTokens.spacing.xs }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Pressable
+                accessibilityLabel="Open profile and navigation menu"
+                accessibilityRole="button"
+                onPress={() => setDrawerVisible(true)}
+                style={{ minWidth: 48, minHeight: 48, justifyContent: 'center' }}
+              >
+                <UserAvatar name={displayName} size={40} />
+              </Pressable>
+              <AppText
+                accessibilityRole="header"
+                style={{ flex: 1, textAlign: 'center' }}
+                variant="label"
+              >
+                Admiino
+              </AppText>
+              <IconButton
+                accessibilityLabel="Open Global Search"
+                icon={<Search color={colors.text} size={22} />}
+                onPress={() => router.push('/search')}
+              />
+            </View>
+            <View style={{ gap: themeTokens.spacing.xxs }}>
               <AppText accessibilityRole="header" variant="heading">
-                My work
+                Hello, {firstName(user?.firstName)}
               </AppText>
-              <AppText tone="secondary" variant="caption">
-                {role}
-              </AppText>
-            </View>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.sm }}>
-              {[
-                { label: 'Assigned to me', value: summary.totalTasks },
-                { label: 'Open', value: summary.openTasks },
-                { label: 'Overdue', value: summary.overdueTasks },
-                { label: 'Urgent', value: summary.urgentTasks },
-              ].map((metric) => (
-                <AppCard
-                  accessibilityLabel={`Open Tasks, ${metric.label}: ${metric.value}`}
-                  key={metric.label}
-                  onPress={() => router.push('/(tabs)/tasks')}
-                  padding="sm"
-                  style={{ flexBasis: '47%', flexGrow: 1, gap: themeTokens.spacing.xxs }}
-                >
-                  <AppText tone="secondary" variant="caption">
-                    {metric.label}
-                  </AppText>
-                  <AppText variant="heading">{metric.value}</AppText>
-                </AppCard>
-              ))}
+              <Pressable
+                accessibilityLabel={`Switch workspace from ${activeWorkspace?.company.name ?? 'current workspace'}`}
+                accessibilityRole="button"
+                onPress={() => router.push('/workspace-select')}
+                style={{
+                  minHeight: 40,
+                  alignSelf: 'flex-start',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: themeTokens.spacing.xs,
+                }}
+              >
+                <AppText numberOfLines={1} tone="link" variant="label">
+                  {activeWorkspace?.company.name ?? 'Choose workspace'}
+                </AppText>
+                <ChevronDown color={colors.primaryAction} size={16} />
+              </Pressable>
             </View>
           </View>
-        )}
 
-        {currentDashboard && summary?.totalTasks === 0 && (
-          <AppCard padding="md" style={{ gap: themeTokens.spacing.xs }}>
-            <AppText variant="label">Nothing assigned yet</AppText>
-            <AppText tone="secondary">Tasks assigned to you will appear here.</AppText>
-          </AppCard>
-        )}
+          {errorMessage && (
+            <InlineError
+              message={errorMessage}
+              onRetry={retry}
+              retryLabel="Retry loading your work"
+            />
+          )}
 
-        {currentDashboard && summary && summary.totalTasks > 0 && (
-          <>
-            <View style={{ gap: themeTokens.spacing.sm }}>
+          {summary && (
+            <View style={{ gap: themeTokens.spacing.xs }}>
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
                 }}
               >
                 <AppText accessibilityRole="header" variant="heading">
-                  Needs my attention
+                  My work
                 </AppText>
-                <AppButton
-                  accessibilityLabel="Open Tasks"
-                  onPress={() => router.push('/(tabs)/tasks')}
-                  style={{ minHeight: 40, paddingHorizontal: 8 }}
-                  variant="ghost"
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
+                {[
+                  {
+                    label: 'Assigned to me',
+                    value: summary.totalTasks,
+                    Icon: ClipboardList,
+                    tone: 'info' as const,
+                  },
+                  {
+                    label: 'Open',
+                    value: summary.openTasks,
+                    Icon: ListTodo,
+                    tone: 'neutral' as const,
+                  },
+                  {
+                    label: 'Overdue',
+                    value: summary.overdueTasks,
+                    Icon: CircleAlert,
+                    tone: 'danger' as const,
+                  },
+                  {
+                    label: 'Urgent',
+                    value: summary.urgentTasks,
+                    Icon: ShieldAlert,
+                    tone: 'warning' as const,
+                  },
+                ].map(({ label, value, Icon, tone }) => (
+                  <AppCard
+                    accessibilityLabel={`Open Tasks, ${label}: ${value}`}
+                    key={label}
+                    onPress={() => router.push('/(tabs)/tasks')}
+                    padding="sm"
+                    style={{
+                      flexBasis: '47%',
+                      flexGrow: 1,
+                      minHeight: 76,
+                      gap: themeTokens.spacing.xxs,
+                      borderWidth: 0,
+                      backgroundColor: colors.surfaceSubtle,
+                    }}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Icon color={colors.semantic[tone].foreground} size={16} />
+                      <AppText numberOfLines={1} tone="secondary" variant="caption">
+                        {label}
+                      </AppText>
+                    </View>
+                    <AppText variant="heading">{value}</AppText>
+                  </AppCard>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {currentDashboard && summary?.totalTasks === 0 && (
+            <AppText tone="secondary" variant="caption">
+              No tasks assigned yet.
+            </AppText>
+          )}
+
+          <View style={{ gap: themeTokens.spacing.xs }}>
+            <AppText accessibilityRole="header" variant="label">
+              Quick access
+            </AppText>
+            <View style={{ flexDirection: 'row', gap: themeTokens.spacing.xs }}>
+              {quickAccess.map(({ title, route, Icon }) => (
+                <AppCard
+                  accessibilityLabel={`Open ${title}`}
+                  key={title}
+                  onPress={() => router.push(route)}
+                  padding="sm"
+                  style={{
+                    alignItems: 'center',
+                    flex: 1,
+                    gap: themeTokens.spacing.xs,
+                    justifyContent: 'center',
+                    minHeight: 64,
+                    borderWidth: 0,
+                    backgroundColor: colors.surfaceSubtle,
+                  }}
                 >
-                  Tasks
-                </AppButton>
-              </View>
-              {attentionTasks.length ? (
-                attentionTasks.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
-                    task={task}
-                  />
-                ))
-              ) : (
-                <AppText tone="secondary">
-                  No overdue, high-priority, or near-due tasks are showing in this task list.
-                </AppText>
-              )}
+                  <Icon color={colors.primaryAction} size={22} />
+                  <AppText variant="label">{title}</AppText>
+                </AppCard>
+              ))}
             </View>
-
-            <View style={{ gap: themeTokens.spacing.sm }}>
-              <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.xs }}
-              >
-                <CalendarDays color={colors.primaryAction} size={20} />
-                <AppText accessibilityRole="header" variant="heading">
-                  Due soon
-                </AppText>
-              </View>
-              {dueSoonTasks.length ? (
-                dueSoonTasks.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
-                    task={task}
-                  />
-                ))
-              ) : (
-                <AppText tone="secondary">
-                  No assigned tasks due in the next 7 days are showing in this task list.
-                </AppText>
-              )}
-            </View>
-          </>
-        )}
-
-        <View style={{ gap: themeTokens.spacing.sm }}>
-          <AppText accessibilityRole="header" variant="heading">
-            Quick access
-          </AppText>
-          <View style={{ flexDirection: 'row', gap: themeTokens.spacing.sm }}>
-            {(
-              [
-                { title: 'Tasks', route: '/(tabs)/tasks', Icon: ListTodo },
-                { title: 'Projects', route: '/(tabs)/projects', Icon: FolderKanban },
-                { title: 'Inbox', route: '/(tabs)/inbox', Icon: Inbox },
-              ] as const
-            ).map(({ title, route, Icon }) => (
-              <AppCard
-                accessibilityLabel={`Open ${title}`}
-                key={title}
-                onPress={() => router.push(route)}
-                padding="sm"
-                style={{
-                  alignItems: 'center',
-                  flex: 1,
-                  gap: themeTokens.spacing.xs,
-                  justifyContent: 'center',
-                  minHeight: 84,
-                }}
-              >
-                <Icon color={colors.primaryAction} size={22} />
-                <AppText variant="label">{title}</AppText>
-              </AppCard>
-            ))}
           </View>
-        </View>
-      </ScrollView>
+
+          {currentDashboard && summary && summary.totalTasks > 0 && (
+            <>
+              <View style={{ gap: themeTokens.spacing.sm }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <AppText accessibilityRole="header" variant="heading">
+                    Needs attention
+                  </AppText>
+                  <AppButton
+                    accessibilityLabel="See all tasks needing attention"
+                    onPress={() => router.push('/(tabs)/tasks')}
+                    style={{ minHeight: 40, paddingHorizontal: 4 }}
+                    variant="ghost"
+                  >
+                    See all
+                  </AppButton>
+                </View>
+                {attentionTasks.length ? (
+                  attentionTasks.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
+                      task={task}
+                    />
+                  ))
+                ) : (
+                  <AppText tone="secondary" variant="caption">
+                    Nothing needs attention right now.
+                  </AppText>
+                )}
+              </View>
+
+              <View style={{ gap: themeTokens.spacing.xs }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: themeTokens.spacing.xs,
+                  }}
+                >
+                  <CalendarDays color={colors.primaryAction} size={20} />
+                  <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
+                    Due soon
+                  </AppText>
+                  <AppButton
+                    accessibilityLabel="See all due soon tasks"
+                    onPress={() => router.push('/(tabs)/tasks')}
+                    style={{ minHeight: 40, paddingHorizontal: 4 }}
+                    variant="ghost"
+                  >
+                    See all
+                  </AppButton>
+                </View>
+                {dueSoonTasks.length ? (
+                  dueSoonTasks.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
+                      task={task}
+                    />
+                  ))
+                ) : (
+                  <AppText tone="secondary" variant="caption">
+                    Nothing due in the next 7 days.
+                  </AppText>
+                )}
+              </View>
+            </>
+          )}
+        </ScrollView>
+        <NavigationDrawer
+          activeDestination="Home"
+          onClose={() => setDrawerVisible(false)}
+          onNavigate={(route) => router.push(route)}
+          onSignOut={async () => {
+            await logout();
+            router.replace('/sign-in');
+          }}
+          onSwitchWorkspace={() => router.push('/workspace-select')}
+          user={user}
+          visible={drawerVisible}
+          workspace={activeWorkspace}
+        />
+      </View>
     </AppScreen>
   );
 }

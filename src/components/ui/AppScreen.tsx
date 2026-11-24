@@ -43,6 +43,8 @@ export function AppScreen({
     <ScrollView
       contentContainerStyle={contentStyle}
       keyboardShouldPersistTaps="handled"
+      showsHorizontalScrollIndicator={false}
+      showsVerticalScrollIndicator={false}
       style={{ flex: 1 }}
     >
       {children}

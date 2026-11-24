@@ -18,6 +18,7 @@ describe('P11 personal dashboard task helpers', () => {
     expect(getDueDateLabel('2026-07-12', now)).toBe('Overdue');
     expect(getDueDateLabel('2026-07-13', now)).toBe('Today');
     expect(getDueDateLabel('2026-07-14', now)).toBe('Tomorrow');
+    expect(getDueDateLabel('2026-07-13T00:00:00.000Z', now)).toBe('Today');
     expect(getDueDateLabel('not-a-date', now)).toBeNull();
   });
 

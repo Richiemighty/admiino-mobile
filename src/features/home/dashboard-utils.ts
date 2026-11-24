@@ -5,11 +5,17 @@ const OPEN_STATUSES = new Set(['pending', 'in_progress', 'in_review', 'delayed']
 
 function dateForDeadline(value: string | null | undefined): Date | null {
   if (!value) return null;
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(value);
   const date = dateOnly
     ? new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]))
     : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return Number.isNaN(date.getTime()) ||
+    (dateOnly &&
+      (date.getFullYear() !== Number(dateOnly[1]) ||
+        date.getMonth() !== Number(dateOnly[2]) - 1 ||
+        date.getDate() !== Number(dateOnly[3])))
+    ? null
+    : date;
 }
 
 function localDayNumber(date: Date): number {

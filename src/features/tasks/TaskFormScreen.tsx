@@ -1,23 +1,17 @@
+import { DateTimePicker } from '@expo/ui/community/datetime-picker';
 import { router, useFocusEffect, usePreventRemove } from 'expo-router';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, CalendarDays, ChevronDown, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
 import {
   AppButton,
-  AppCard,
   AppInput,
   AppScreen,
   AppText,
+  BottomSheet,
   IconButton,
   InlineError,
   LoadingState,
@@ -25,15 +19,15 @@ import {
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import {
-  TASK_PRIORITIES,
   type CreateTaskInput,
+  TASK_PRIORITIES,
   type TaskAccess,
   type TaskMemberOption,
   type TaskPriority,
   type TaskProjectOption,
   type TaskRecord,
-  type TaskTeamOption,
   taskService,
+  type TaskTeamOption,
   type UpdateTaskInput,
 } from './service';
 
@@ -71,12 +65,12 @@ const EMPTY_FORM: TaskFormValues = {
 };
 
 function formValuesForTask(task: TaskRecord): TaskFormValues {
-  const assignees =
-    task.assignees?.length ? task.assignees : task.assignee ? [task.assignee] : [];
+  const assignees = task.assignees?.length ? task.assignees : task.assignee ? [task.assignee] : [];
+  const datePrefix = task.deadline?.match(/^\d{4}-\d{2}-\d{2}(?=$|T)/)?.[0];
   const deadlineDate = task.deadline ? new Date(task.deadline) : null;
   const deadline =
-    task.deadline && /^\d{4}-\d{2}-\d{2}$/.test(task.deadline)
-      ? task.deadline
+    datePrefix && validDate(datePrefix)
+      ? datePrefix
       : deadlineDate && !Number.isNaN(deadlineDate.getTime())
         ? `${deadlineDate.getFullYear()}-${String(deadlineDate.getMonth() + 1).padStart(2, '0')}-${String(deadlineDate.getDate()).padStart(2, '0')}`
         : '';
@@ -101,9 +95,25 @@ function validDate(value: string): boolean {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
+function dateFromString(value: string): Date | null {
+  if (!validDate(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day, 12);
+}
+
+function dateStringFor(value: Date): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+}
+
+function displayDate(value: string): string {
+  const date = dateFromString(value);
+  return date
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date)
+    : 'Select date';
+}
+
 function failureMessage(error: unknown): string {
-  if (error instanceof ApiNetworkError)
-    return 'You appear to be offline. Reconnect and try again.';
+  if (error instanceof ApiNetworkError) return 'You appear to be offline. Reconnect and try again.';
   if (error instanceof ApiTimeoutError) return 'The request timed out. Please try again.';
   if (error instanceof ApiError && error.status === 401)
     return 'Your session has expired. Sign in again to continue.';
@@ -139,6 +149,14 @@ function ChoiceField({
     .filter((option) => selectedIds.includes(option.id))
     .map((option) => option.label)
     .join(', ');
+  const selectedCount = selectedIds.length;
+  const selectionSummary = multiple
+    ? selectedCount === 1
+      ? selectedLabels
+      : selectedCount > 1
+        ? `${selectedCount} selected`
+        : ''
+    : selectedLabels;
   const visibleOptions = options.filter((option) =>
     option.label.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
   );
@@ -164,132 +182,247 @@ function ChoiceField({
       >
         <AppText variant="label">{label}</AppText>
         <AppText numberOfLines={1} tone="secondary" variant="caption">
-          {selectedLabels || 'Optional'}
+          {selectionSummary || 'Optional'}
         </AppText>
       </Pressable>
-      <Modal
-        accessibilityViewIsModal
-        animationType="slide"
-        onRequestClose={() => setVisible(false)}
-        transparent
+      <BottomSheet
+        footer={
+          multiple ? (
+            <AppButton
+              accessibilityLabel={`Finish selecting ${label.toLowerCase()}`}
+              onPress={() => setVisible(false)}
+              style={{ marginTop: themeTokens.spacing.md }}
+              variant="primary"
+            >
+              Done
+            </AppButton>
+          ) : undefined
+        }
+        onClose={() => setVisible(false)}
+        title={label}
         visible={visible}
       >
-        <View
-          style={{
-            flex: 1,
-            justifyContent: 'flex-end',
-            backgroundColor: '#00000066',
-          }}
-        >
-          <View
-            style={{
-              maxHeight: '80%',
-              gap: themeTokens.spacing.md,
-              padding: themeTokens.spacing.lg,
-              borderTopLeftRadius: themeTokens.radius.lg,
-              borderTopRightRadius: themeTokens.radius.lg,
-              backgroundColor: colors.surface,
-            }}
+        <View style={{ gap: themeTokens.spacing.sm }}>
+          {options.length > 5 && (
+            <TextInput
+              accessibilityLabel={`Search ${label.toLowerCase()}`}
+              onChangeText={setSearch}
+              placeholder={`Search ${label.toLowerCase()}`}
+              placeholderTextColor={colors.textMuted}
+              style={{
+                minHeight: themeTokens.touchTarget.minimum,
+                color: colors.text,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: themeTokens.radius.sm,
+                paddingHorizontal: themeTokens.spacing.md,
+              }}
+              value={search}
+            />
+          )}
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+            style={{ maxHeight: 360 }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
-                {label}
-              </AppText>
-              <AppButton
-                accessibilityLabel={multiple ? `Finish selecting ${label.toLowerCase()}` : 'Close'}
-                onPress={() => setVisible(false)}
-                variant="ghost"
-              >
-                {multiple ? 'Done' : 'Close'}
-              </AppButton>
-            </View>
-            {options.length > 5 && (
-              <TextInput
-                accessibilityLabel={`Search ${label.toLowerCase()}`}
-                onChangeText={setSearch}
-                placeholder={`Search ${label.toLowerCase()}`}
-                placeholderTextColor={colors.textMuted}
-                style={{
-                  minHeight: themeTokens.touchTarget.minimum,
-                  color: colors.text,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: themeTokens.radius.sm,
-                  paddingHorizontal: themeTokens.spacing.md,
-                }}
-                value={search}
-              />
-            )}
-            <ScrollView keyboardShouldPersistTaps="handled">
-              <View style={{ gap: themeTokens.spacing.xs }}>
-                {!multiple && (
+            <View style={{ gap: themeTokens.spacing.xs }}>
+              {!multiple && (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    onChange([]);
+                    setVisible(false);
+                  }}
+                  style={{ minHeight: themeTokens.touchTarget.minimum, justifyContent: 'center' }}
+                >
+                  <AppText tone="secondary">None</AppText>
+                </Pressable>
+              )}
+              {visibleOptions.map((option) => {
+                const selected = selectedIds.includes(option.id);
+                return (
                   <Pressable
+                    accessibilityLabel={`${selected ? 'Remove' : 'Select'} ${option.label}`}
                     accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    key={option.id}
                     onPress={() => {
-                      onChange([]);
-                      setVisible(false);
+                      if (multiple) {
+                        onChange(
+                          selected
+                            ? selectedIds.filter((id) => id !== option.id)
+                            : [...selectedIds, option.id],
+                        );
+                      } else {
+                        onChange([option.id]);
+                        setVisible(false);
+                      }
                     }}
-                    style={{ minHeight: themeTokens.touchTarget.minimum, justifyContent: 'center' }}
+                    style={{
+                      minHeight: themeTokens.touchTarget.minimum,
+                      justifyContent: 'center',
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                    }}
                   >
-                    <AppText tone="secondary">None</AppText>
+                    <AppText tone={selected ? 'link' : 'primary'}>{option.label}</AppText>
                   </Pressable>
-                )}
-                {visibleOptions.map((option) => {
-                  const selected = selectedIds.includes(option.id);
-                  return (
-                    <Pressable
-                      accessibilityLabel={`${selected ? 'Remove' : 'Select'} ${option.label}`}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      key={option.id}
-                      onPress={() => {
-                        if (multiple) {
-                          onChange(
-                            selected
-                              ? selectedIds.filter((id) => id !== option.id)
-                              : [...selectedIds, option.id],
-                          );
-                        } else {
-                          onChange([option.id]);
-                          setVisible(false);
-                        }
-                      }}
-                      style={{
-                        minHeight: themeTokens.touchTarget.minimum,
-                        justifyContent: 'center',
-                        borderBottomWidth: 1,
-                        borderBottomColor: colors.border,
-                      }}
-                    >
-                      <AppText tone={selected ? 'link' : 'primary'}>{option.label}</AppText>
-                    </Pressable>
-                  );
-                })}
-                {visibleOptions.length === 0 && (
-                  <AppText tone="secondary">No matching options.</AppText>
-                )}
-              </View>
-            </ScrollView>
-          </View>
+                );
+              })}
+              {visibleOptions.length === 0 && (
+                <AppText tone="secondary">No matching options.</AppText>
+              )}
+            </View>
+          </ScrollView>
         </View>
-      </Modal>
+      </BottomSheet>
     </>
   );
 }
 
-export function TaskFormScreen({
-  mode,
-  taskId,
-  projectId,
-}: TaskFormScreenProps) {
-  const {
-    activeWorkspace,
-    permissions,
-    status,
-    user,
-    workspacePermissionStatus,
-    logout,
-  } = useAuth();
+function DatePickerField({
+  value,
+  error,
+  onChange,
+}: {
+  value: string;
+  error?: string;
+  onChange: (value: string) => void;
+}) {
+  const { colors, resolvedMode } = useAppTheme();
+  const [visible, setVisible] = useState(false);
+  const [draftDate, setDraftDate] = useState<Date>(dateFromString(value) ?? new Date());
+
+  const open = () => {
+    setDraftDate(dateFromString(value) ?? new Date());
+    setVisible(true);
+  };
+
+  return (
+    <>
+      <View style={{ gap: themeTokens.spacing.xxs }}>
+        <AppText variant="label">Due date</AppText>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.xs }}>
+          <Pressable
+            accessibilityLabel="Deadline"
+            accessibilityRole="button"
+            onPress={open}
+            style={{
+              minHeight: themeTokens.touchTarget.minimum,
+              flex: 1,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: themeTokens.spacing.sm,
+              borderWidth: 1,
+              borderColor: error ? colors.semantic.danger.foreground : colors.border,
+              borderRadius: themeTokens.radius.sm,
+              paddingHorizontal: themeTokens.spacing.md,
+              backgroundColor: colors.surface,
+            }}
+          >
+            <CalendarDays color={colors.primaryAction} size={18} />
+            <AppText style={{ flex: 1 }} tone={value ? 'primary' : 'secondary'}>
+              {value ? displayDate(value) : 'Select date'}
+            </AppText>
+            <ChevronDown color={colors.textMuted} size={16} />
+          </Pressable>
+          {value.length > 0 && (
+            <Pressable
+              accessibilityLabel="Clear deadline"
+              accessibilityRole="button"
+              onPress={() => onChange('')}
+              style={{
+                minWidth: 44,
+                minHeight: 44,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <X color={colors.textMuted} size={18} />
+            </Pressable>
+          )}
+        </View>
+        {error && (
+          <AppText tone="danger" variant="caption">
+            {error}
+          </AppText>
+        )}
+      </View>
+      <BottomSheet
+        footer={
+          <View
+            style={{
+              flexDirection: 'row',
+              gap: themeTokens.spacing.sm,
+              paddingTop: themeTokens.spacing.md,
+            }}
+          >
+            <AppButton
+              accessibilityLabel="Cancel date selection"
+              onPress={() => setVisible(false)}
+              style={{ flex: 1 }}
+              variant="outline"
+            >
+              Cancel
+            </AppButton>
+            <AppButton
+              accessibilityLabel="Confirm selected due date"
+              onPress={() => {
+                onChange(dateStringFor(draftDate));
+                setVisible(false);
+              }}
+              style={{ flex: 1 }}
+              variant="primary"
+            >
+              Done
+            </AppButton>
+          </View>
+        }
+        onClose={() => setVisible(false)}
+        title="Due date"
+        visible={visible}
+      >
+        <DateTimePicker
+          accentColor={colors.primaryAction}
+          display="inline"
+          mode="date"
+          onValueChange={(_event, date) => setDraftDate(date)}
+          presentation="inline"
+          testID="task-deadline-picker"
+          themeVariant={resolvedMode}
+          value={draftDate}
+        />
+      </BottomSheet>
+    </>
+  );
+}
+
+export function TaskFormScreen({ mode, taskId, projectId }: TaskFormScreenProps) {
+  const { activeWorkspace } = useAuth();
+  const workspaceId = activeWorkspace?.companyId ?? null;
+  const previousWorkspaceId = useRef<string | null>(workspaceId);
+
+  useEffect(() => {
+    if (previousWorkspaceId.current && workspaceId && previousWorkspaceId.current !== workspaceId) {
+      router.replace('/(tabs)/tasks');
+    }
+    previousWorkspaceId.current = workspaceId;
+  }, [workspaceId]);
+
+  return (
+    <TaskFormScreenContent
+      key={workspaceId ?? 'no-workspace'}
+      mode={mode}
+      projectId={projectId}
+      taskId={taskId}
+    />
+  );
+}
+
+function TaskFormScreenContent({ mode, taskId, projectId }: TaskFormScreenProps) {
+  const { activeWorkspace, permissions, status, user, workspacePermissionStatus, logout } =
+    useAuth();
   const { colors } = useAppTheme();
   const workspaceId = activeWorkspace?.companyId ?? null;
   const role = permissions?.role ?? '';
@@ -297,13 +430,9 @@ export function TaskFormScreen({
   const projectContext = mode === 'create' && Boolean(projectId);
   const createPermission = projectContext ? 'create_project_tasks' : 'create_tasks';
   const canCreate =
-    mode === 'create' &&
-    roleCanCreate &&
-    permissions?.permissions[createPermission] === true;
+    mode === 'create' && roleCanCreate && permissions?.permissions[createPermission] === true;
   const canEditTaskFields =
-    mode === 'edit' &&
-    role !== 'member' &&
-    workspacePermissionStatus === 'ready';
+    mode === 'edit' && role !== 'member' && workspacePermissionStatus === 'ready';
   const isReady =
     status === 'authenticated' &&
     workspacePermissionStatus === 'ready' &&
@@ -325,15 +454,15 @@ export function TaskFormScreen({
   const [projects, setProjects] = useState<TaskProjectOption[]>([]);
   const [teams, setTeams] = useState<TaskTeamOption[]>([]);
   const [members, setMembers] = useState<TaskMemberOption[]>([]);
-  const [optionsLoading, setOptionsLoading] = useState(false);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [optionsRetry, setOptionsRetry] = useState(0);
+  const [optionsLoadedKey, setOptionsLoadedKey] = useState('');
+  const optionsKey = `${workspaceId ?? ''}|${optionsRetry}`;
+  const optionsLoading =
+    mode === 'create' && isReady && Boolean(workspaceId) && optionsLoadedKey !== optionsKey;
   const [submitting, setSubmitting] = useState(false);
   const [discardConfirmed, setDiscardConfirmed] = useState(false);
   const submittingRef = useRef(false);
-  const initialWorkspaceId = useRef<string | null>(null);
-  const workspaceChanged =
-    initialWorkspaceId.current !== null && initialWorkspaceId.current !== workspaceId;
 
   const canAssignOthers =
     permissions?.permissions.assign_workspace_members === true &&
@@ -364,22 +493,6 @@ export function TaskFormScreen({
       ]);
     },
   );
-
-  useEffect(() => {
-    if (!isReady || !workspaceId) return;
-    if (initialWorkspaceId.current === null) {
-      initialWorkspaceId.current = workspaceId;
-      return;
-    }
-    if (initialWorkspaceId.current !== workspaceId) {
-      setTask(null);
-      setTaskAccess(null);
-      setProjects([]);
-      setTeams([]);
-      setMembers([]);
-      router.replace('/(tabs)/tasks');
-    }
-  }, [isReady, workspaceId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -426,8 +539,6 @@ export function TaskFormScreen({
   useEffect(() => {
     if (mode !== 'create' || !isReady || !workspaceId) return;
     const controller = new AbortController();
-    setOptionsLoading(true);
-    setOptionsError(null);
     const requests: Promise<void>[] = [
       taskService
         .getProjects(workspaceId, controller.signal)
@@ -459,16 +570,18 @@ export function TaskFormScreen({
           })
           .catch(() => {
             if (!controller.signal.aborted) {
-              setOptionsError('Workspace members could not be loaded. You can still create an unassigned task.');
+              setOptionsError(
+                'Workspace members could not be loaded. You can still create an unassigned task.',
+              );
             }
           }),
       );
     }
     void Promise.all(requests).finally(() => {
-      if (!controller.signal.aborted) setOptionsLoading(false);
+      if (!controller.signal.aborted) setOptionsLoadedKey(optionsKey);
     });
     return () => controller.abort();
-  }, [canAssignOthers, isReady, mode, optionsRetry, showTeamPicker, workspaceId]);
+  }, [canAssignOthers, isReady, mode, optionsKey, optionsRetry, showTeamPicker, workspaceId]);
 
   const selectedTeam = teams.find((team) => team.id === form.teamId);
   const eligibleMembers = selectedTeam
@@ -484,7 +597,9 @@ export function TaskFormScreen({
       lastName: user.lastName ?? 'to me',
     });
   }
-  const uniqueAssigneeOptions = [...new Map(assigneeOptions.map((item) => [item.userId, item])).values()];
+  const uniqueAssigneeOptions = [
+    ...new Map(assigneeOptions.map((item) => [item.userId, item])).values(),
+  ];
 
   const updateForm = (changes: Partial<TaskFormValues>) => {
     setForm((current) => ({ ...current, ...changes }));
@@ -532,7 +647,7 @@ export function TaskFormScreen({
     setSaveError(null);
     try {
       const deadline = form.deadline
-        ? new Date(`${form.deadline}T00:00:00`).toISOString()
+        ? new Date(`${form.deadline}T00:00:00.000Z`).toISOString()
         : mode === 'edit'
           ? null
           : undefined;
@@ -560,12 +675,7 @@ export function TaskFormScreen({
           priority: form.priority,
           deadline,
         };
-        const updated = await taskService.updateTask(
-          taskId,
-          workspaceId,
-          input,
-          taskAccess,
-        );
+        const updated = await taskService.updateTask(taskId, workspaceId, input, taskAccess);
         setTask(updated);
         setInitialForm(form);
         setDiscardConfirmed(true);
@@ -595,13 +705,6 @@ export function TaskFormScreen({
     return (
       <AppScreen>
         <LoadingState label="Verifying workspace access" variant="fullScreen" />
-      </AppScreen>
-    );
-  }
-  if (workspaceChanged) {
-    return (
-      <AppScreen>
-        <LoadingState label="Returning to Tasks after workspace switch" variant="fullScreen" />
       </AppScreen>
     );
   }
@@ -645,9 +748,7 @@ export function TaskFormScreen({
           {loadError ? (
             <InlineError message={loadError} />
           ) : (
-            <AppText tone="secondary">
-              You do not have permission to edit this task.
-            </AppText>
+            <AppText tone="secondary">You do not have permission to edit this task.</AppText>
           )}
         </View>
       </AppScreen>
@@ -658,168 +759,148 @@ export function TaskFormScreen({
   const teamOptions = teams.map((team) => ({ id: team.id, label: team.name }));
   const memberOptions = uniqueAssigneeOptions.map((member) => ({
     id: member.userId,
-    label:
-      member.userId === user?.id
-        ? `${optionLabel(member)} (you)`
-        : optionLabel(member),
+    label: member.userId === user?.id ? `${optionLabel(member)} (you)` : optionLabel(member),
   }));
-  const assigneeLabels = new Map(memberOptions.map((option) => [option.id, option.label]));
-
   return (
-    <AppScreen keyboardAvoiding padding="md" scrollable>
-      <View
-        style={{
-          width: '100%',
-          maxWidth: 720,
-          alignSelf: 'center',
-          gap: themeTokens.spacing.md,
-          paddingBottom: themeTokens.spacing.xl,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
-          <IconButton
-            accessibilityLabel="Cancel task changes"
-            icon={<ArrowLeft color={colors.text} size={22} />}
-            onPress={cancel}
-          />
-          <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
-            {mode === 'create' ? 'Create task' : 'Edit task'}
-          </AppText>
-        </View>
-
-        {loadError && <InlineError message={loadError} />}
-        {saveError && <InlineError message={saveError} />}
-
-        <AppInput
-          autoCapitalize="sentences"
-          error={fieldErrors.title}
-          label="Task title"
-          onChangeText={(value) => updateForm({ title: value })}
-          placeholder="What needs to be done?"
-          returnKeyType="next"
-          value={form.title}
-        />
-        <AppInput
-          label="Description"
-          multiline
-          onChangeText={(value) => updateForm({ description: value })}
-          placeholder="Add details (optional)"
-          value={form.description}
-          inputStyle={{ minHeight: 100, textAlignVertical: 'top' }}
-        />
-
-        <View style={{ gap: themeTokens.spacing.xs }}>
-          <AppText variant="label">Priority</AppText>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
-            {TASK_PRIORITIES.map((priority) => {
-              const selected = form.priority === priority;
-              return (
-                <Pressable
-                  accessibilityLabel={`Set priority to ${priority}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  key={priority}
-                  onPress={() => updateForm({ priority })}
-                  style={{
-                    minHeight: themeTokens.touchTarget.minimum,
-                    justifyContent: 'center',
-                    borderRadius: themeTokens.radius.pill,
-                    paddingHorizontal: themeTokens.spacing.md,
-                    backgroundColor: selected ? colors.primarySurface : colors.surface,
-                    borderWidth: selected ? 0 : 1,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <AppText tone={selected ? 'link' : 'secondary'} variant="caption">
-                    {priority.replace(/\b\w/g, (letter) => letter.toUpperCase())}
-                  </AppText>
-                </Pressable>
-              );
-            })}
+    <AppScreen keyboardAvoiding padding="md">
+      <View style={{ flex: 1, width: '100%', maxWidth: 720, alignSelf: 'center' }}>
+        <ScrollView
+          contentContainerStyle={{
+            gap: themeTokens.spacing.md,
+            paddingBottom: themeTokens.spacing.md,
+          }}
+          keyboardShouldPersistTaps="handled"
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          style={{ flex: 1 }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
+            <IconButton
+              accessibilityLabel="Cancel task changes"
+              icon={<ArrowLeft color={colors.text} size={22} />}
+              onPress={cancel}
+            />
+            <AppText accessibilityRole="header" style={{ flex: 1 }} variant="heading">
+              {mode === 'create' ? 'Create Task' : 'Edit Task'}
+            </AppText>
           </View>
-        </View>
 
-        <AppInput
-          autoCapitalize="none"
-          error={fieldErrors.deadline}
-          hint="Optional. Use YYYY-MM-DD."
-          label="Deadline"
-          onChangeText={(value) => updateForm({ deadline: value })}
-          placeholder="2026-12-31"
-          value={form.deadline}
-        />
+          {loadError && <InlineError message={loadError} />}
+          {saveError && <InlineError message={saveError} />}
 
-        {mode === 'create' && (
-          <>
-            <ChoiceField
-              disabled={projectContext}
-              label="Project"
-              onChange={(ids) => updateForm({ projectId: ids[0] ?? '' })}
-              options={projectOptions}
-              selectedIds={form.projectId ? [form.projectId] : []}
-            />
-            {showTeamPicker && (
+          <AppInput
+            autoCapitalize="sentences"
+            error={fieldErrors.title}
+            label="Task title"
+            onChangeText={(value) => updateForm({ title: value })}
+            placeholder="What needs to be done?"
+            returnKeyType="next"
+            value={form.title}
+          />
+          <AppInput
+            label="Description"
+            multiline
+            onChangeText={(value) => updateForm({ description: value })}
+            placeholder="Add details (optional)"
+            value={form.description}
+            inputStyle={{ minHeight: 88, textAlignVertical: 'top' }}
+          />
+
+          <View style={{ gap: themeTokens.spacing.xs }}>
+            <AppText variant="label">Priority</AppText>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
+              {TASK_PRIORITIES.map((priority) => {
+                const selected = form.priority === priority;
+                return (
+                  <Pressable
+                    accessibilityLabel={`Set priority to ${priority}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    key={priority}
+                    onPress={() => updateForm({ priority })}
+                    style={{
+                      minHeight: themeTokens.touchTarget.minimum,
+                      justifyContent: 'center',
+                      borderRadius: themeTokens.radius.pill,
+                      paddingHorizontal: themeTokens.spacing.md,
+                      backgroundColor: selected ? colors.primaryAction : colors.surface,
+                      borderWidth: selected ? 0 : 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <AppText tone={selected ? 'inverse' : 'secondary'} variant="caption">
+                      {priority.replace(/\b\w/g, (letter) => letter.toUpperCase())}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <DatePickerField
+            error={fieldErrors.deadline}
+            onChange={(deadline) => updateForm({ deadline })}
+            value={form.deadline}
+          />
+
+          {mode === 'create' && (
+            <>
               <ChoiceField
-                label="Team"
-                onChange={(ids) => {
-                  const teamId = ids[0] ?? '';
-                  const team = teams.find((item) => item.id === teamId);
-                  updateForm({
-                    teamId,
-                    assigneeIds: team
-                      ? form.assigneeIds.filter((id) => team.memberIds.includes(id))
-                      : form.assigneeIds,
-                  });
-                }}
-                options={teamOptions}
-                selectedIds={form.teamId ? [form.teamId] : []}
+                disabled={projectContext}
+                label="Project"
+                onChange={(ids) => updateForm({ projectId: ids[0] ?? '' })}
+                options={projectOptions}
+                selectedIds={form.projectId ? [form.projectId] : []}
               />
-            )}
-            <ChoiceField
-              label="Assignees"
-              multiple
-              onChange={(ids) => updateForm({ assigneeIds: ids })}
-              options={memberOptions}
-              selectedIds={form.assigneeIds}
-            />
-            {!canAssignOthers && (
-              <AppText tone="secondary" variant="caption">
-                You can assign this task to yourself. Assigning other workspace members is not permitted.
-              </AppText>
-            )}
-            {optionsLoading && <LoadingState label="Loading task options" />}
-            {optionsError && (
-              <InlineError
-                message={optionsError}
-                onRetry={() => setOptionsRetry((value) => value + 1)}
-                retryLabel="Retry loading task options"
+              {showTeamPicker && (
+                <ChoiceField
+                  label="Team"
+                  onChange={(ids) => {
+                    const teamId = ids[0] ?? '';
+                    const team = teams.find((item) => item.id === teamId);
+                    updateForm({
+                      teamId,
+                      assigneeIds: team
+                        ? form.assigneeIds.filter((id) => team.memberIds.includes(id))
+                        : form.assigneeIds,
+                    });
+                  }}
+                  options={teamOptions}
+                  selectedIds={form.teamId ? [form.teamId] : []}
+                />
+              )}
+              <ChoiceField
+                label="Assignees"
+                multiple
+                onChange={(ids) => updateForm({ assigneeIds: ids })}
+                options={memberOptions}
+                selectedIds={form.assigneeIds}
               />
-            )}
-          </>
-        )}
+              {optionsLoading && <LoadingState label="Loading task options" />}
+              {optionsError && (
+                <InlineError
+                  message={optionsError}
+                  onRetry={() => {
+                    setOptionsError(null);
+                    setOptionsRetry((value) => value + 1);
+                  }}
+                  retryLabel="Retry loading task options"
+                />
+              )}
+            </>
+          )}
+        </ScrollView>
 
-        <AppCard style={{ gap: themeTokens.spacing.xs }}>
-          <AppText variant="caption">
-            Task creation and updates are validated by the active workspace backend.
-          </AppText>
-          {mode === 'create' && form.projectId && (
-            <AppText tone="secondary" variant="caption">
-              Project: {projects.find((item) => item.id === form.projectId)?.name ?? 'Selected project'}
-            </AppText>
-          )}
-          {mode === 'create' && form.teamId && (
-            <AppText tone="secondary" variant="caption">
-              Team: {teams.find((item) => item.id === form.teamId)?.name ?? 'Selected team'}
-            </AppText>
-          )}
-          {mode === 'create' && form.assigneeIds.length > 0 && (
-            <AppText tone="secondary" variant="caption">
-              Assignees: {form.assigneeIds.map((id) => assigneeLabels.get(id) ?? 'Workspace member').join(', ')}
-            </AppText>
-          )}
-        </AppCard>
-
-        <View style={{ flexDirection: 'row', gap: themeTokens.spacing.sm }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            gap: themeTokens.spacing.sm,
+            paddingTop: themeTokens.spacing.sm,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            backgroundColor: colors.background,
+          }}
+        >
           <AppButton
             accessibilityLabel="Cancel"
             disabled={submitting}
@@ -836,7 +917,7 @@ export function TaskFormScreen({
             onPress={() => void save()}
             style={{ flex: 1 }}
           >
-            {mode === 'create' ? 'Create task' : 'Save changes'}
+            {mode === 'create' ? 'Create Task' : 'Save Changes'}
           </AppButton>
         </View>
       </View>

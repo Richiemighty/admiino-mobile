@@ -1,17 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
-import { Alert } from 'react-native';
+import { createElement as mockCreateElement } from 'react';
+import { Alert, Pressable as mockPressable } from 'react-native';
 
 import { ApiError, ApiNetworkError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
 import { renderWithProviders } from '../../test/render';
+import { taskService } from './service';
 import { TaskDetailsScreen } from './TaskDetailsScreen';
 import { TaskFormScreen } from './TaskFormScreen';
 import { TasksScreen } from './TasksScreen';
-import { taskService } from './service';
 
 jest.mock('../../auth/AuthProvider', () => ({ useAuth: jest.fn() }));
+jest.mock('@expo/ui/community/datetime-picker', () => {
+  return {
+    DateTimePicker: ({
+      onValueChange,
+      testID,
+    }: {
+      onValueChange: (
+        event: { nativeEvent: { timestamp: number; utcOffset: number } },
+        date: Date,
+      ) => void;
+      testID: string;
+    }) =>
+      mockCreateElement(mockPressable, {
+        testID,
+        onPress: () => {
+          const date = new Date(2026, 11, 31, 12);
+          onValueChange({ nativeEvent: { timestamp: date.getTime(), utcOffset: 0 } }, date);
+        },
+      }),
+  };
+});
 jest.mock('./service', () => ({
   ...jest.requireActual<typeof import('./service')>('./service'),
   taskService: {
@@ -142,12 +164,12 @@ describe('P12 task lists, detail, and forms', () => {
       { userId: 'user-1', firstName: 'Sam', lastName: 'Member' },
       { userId: 'user-2', firstName: 'Taylor', lastName: 'Teammate' },
     ]);
-    jest.mocked(taskService.getProjects).mockResolvedValue([
-      { id: 'project-1', name: 'Launch project' },
-    ]);
-    jest.mocked(taskService.getTeams).mockResolvedValue([
-      { id: 'team-1', name: 'Operations', memberIds: ['user-1', 'user-2'] },
-    ]);
+    jest
+      .mocked(taskService.getProjects)
+      .mockResolvedValue([{ id: 'project-1', name: 'Launch project' }]);
+    jest
+      .mocked(taskService.getTeams)
+      .mockResolvedValue([{ id: 'team-1', name: 'Operations', memberIds: ['user-1', 'user-2'] }]);
   });
 
   afterEach(() => {
@@ -156,9 +178,11 @@ describe('P12 task lists, detail, and forms', () => {
   });
 
   it('loads My Tasks and Created by Me from their server relations', async () => {
-    jest.mocked(taskService.listTasks).mockImplementation(async (workspaceId, filters) =>
-      page(workspaceId, filters.relation === 'created' ? 'Created task' : 'Assigned task'),
-    );
+    jest
+      .mocked(taskService.listTasks)
+      .mockImplementation(async (workspaceId, filters) =>
+        page(workspaceId, filters.relation === 'created' ? 'Created task' : 'Assigned task'),
+      );
     await renderWithProviders(<TasksScreen />);
 
     expect(await screen.findByText('Assigned task')).toBeTruthy();
@@ -182,20 +206,22 @@ describe('P12 task lists, detail, and forms', () => {
     expect(await screen.findByText('My task')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'All Tasks' })).toBeNull();
 
-    jest.mocked(taskService.listTasks).mockImplementation(async (workspaceId, filters) =>
-    page(workspaceId, filters.relation === 'all' ? 'All task' : 'Assigned task'),
-    );
-    jest.mocked(useAuth).mockReturnValue(
-      authState(alpha, { permissions: { view_all_tasks: true } }),
-    );
+    jest
+      .mocked(taskService.listTasks)
+      .mockImplementation(async (workspaceId, filters) =>
+        page(workspaceId, filters.relation === 'all' ? 'All task' : 'Assigned task'),
+      );
+    jest
+      .mocked(useAuth)
+      .mockReturnValue(authState(alpha, { permissions: { view_all_tasks: true } }));
     view.rerender(<TasksScreen />);
     expect(await screen.findByRole('button', { name: 'All Tasks' })).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'All Tasks' }));
     expect(await screen.findByText('All task')).toBeTruthy();
     expect(taskService.listTasks).toHaveBeenLastCalledWith(
-        'workspace-1',
-        expect.objectContaining({ relation: 'all', canViewAllTasks: true }),
-        expect.any(AbortSignal),
+      'workspace-1',
+      expect.objectContaining({ relation: 'all', canViewAllTasks: true }),
+      expect.any(AbortSignal),
     );
   });
 
@@ -217,7 +243,9 @@ describe('P12 task lists, detail, and forms', () => {
         ),
       { timeout: 3000 },
     );
+    await fireEvent.press(screen.getByRole('button', { name: 'Filters' }));
     await fireEvent.press(screen.getByRole('button', { name: 'In Progress' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apply task filters' }));
     await waitFor(() =>
       expect(taskService.listTasks).toHaveBeenLastCalledWith(
         'workspace-1',
@@ -234,7 +262,42 @@ describe('P12 task lists, detail, and forms', () => {
         expect.any(AbortSignal),
       ),
     );
-    expect(screen.getByText(/Due-date filtering is not available/)).toBeTruthy();
+    expect(screen.queryByText(/Due-date filtering is not available/)).toBeNull();
+  });
+
+  it('applies filters, keeps them when dismissed, and resets them on Apply', async () => {
+    await renderWithProviders(<TasksScreen />);
+    expect(await screen.findByText('My task')).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Filters' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Urgent' }));
+    expect(taskService.listTasks).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole('button', { name: 'Apply task filters' }));
+    await waitFor(() =>
+      expect(taskService.listTasks).toHaveBeenLastCalledWith(
+        'workspace-1',
+        expect.objectContaining({ priority: 'urgent' }),
+        expect.any(AbortSignal),
+      ),
+    );
+
+    await fireEvent.press(screen.getByRole('button', { name: /Filters, 1 active/ }));
+    await fireEvent.press(screen.getByRole('button', { name: 'High' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Close filters' }));
+    expect(screen.getByRole('button', { name: 'Priority: Urgent' })).toBeTruthy();
+    expect(taskService.listTasks).toHaveBeenCalledTimes(2);
+
+    await fireEvent.press(screen.getByRole('button', { name: /Filters, 1 active/ }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Reset task filters' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Apply task filters' }));
+
+    await waitFor(() => {
+      expect(taskService.listTasks).toHaveBeenLastCalledWith(
+        'workspace-1',
+        expect.not.objectContaining({ priority: expect.anything() }),
+        expect.any(AbortSignal),
+      );
+    });
   });
 
   it('clears the previous workspace task list and aborts its request on switching', async () => {
@@ -270,6 +333,7 @@ describe('P12 task lists, detail, and forms', () => {
     await renderWithProviders(<TaskDetailsScreen taskId={task.id} />);
 
     expect(await screen.findByText(task.title)).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Change status' }));
     expect(screen.getByRole('button', { name: 'Set status to In Progress' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Edit task' })).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: 'Set status to In Progress' }));
@@ -298,7 +362,8 @@ describe('P12 task lists, detail, and forms', () => {
       access: editableAccess,
     });
     await renderWithProviders(<TaskDetailsScreen taskId={task.id} />);
-    expect(await screen.findByText(/awaiting review/)).toBeTruthy();
+    expect(await screen.findByText(/awaiting review/i)).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Change status' }));
     expect(screen.queryByRole('button', { name: 'Set status to Completed' })).toBeNull();
   });
 
@@ -308,6 +373,7 @@ describe('P12 task lists, detail, and forms', () => {
       .mockRejectedValueOnce(new ApiError('Invalid transition', 400));
     await renderWithProviders(<TaskDetailsScreen taskId={task.id} />);
     expect(await screen.findByText(task.title)).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Change status' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Set status to In Progress' }));
 
     expect(await screen.findByText(/server rejected this status change/)).toBeTruthy();
@@ -332,7 +398,9 @@ describe('P12 task lists, detail, and forms', () => {
     await renderWithProviders(<TaskFormScreen mode="create" />);
 
     await fireEvent.changeText(screen.getByLabelText('Task title'), 'Prepare rollout');
-    await fireEvent.changeText(screen.getByLabelText('Deadline'), '2026-12-31');
+    await fireEvent.press(screen.getByRole('button', { name: 'Deadline' }));
+    await fireEvent.press(screen.getByTestId('task-deadline-picker'));
+    await fireEvent.press(screen.getByRole('button', { name: 'Confirm selected due date' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Set priority to urgent' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Project' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Select Launch project' }));
@@ -349,6 +417,7 @@ describe('P12 task lists, detail, and forms', () => {
         expect.objectContaining({
           title: 'Prepare rollout',
           priority: 'urgent',
+          deadline: '2026-12-31T00:00:00.000Z',
           projectId: 'project-1',
           teamId: 'team-1',
           assigneeIds: ['user-2'],
@@ -363,13 +432,11 @@ describe('P12 task lists, detail, and forms', () => {
     const permissions = { create_tasks: true };
     jest.mocked(useAuth).mockReturnValue(authState(alpha, { role: 'manager', permissions }));
     await renderWithProviders(<TaskFormScreen mode="create" />);
-    await fireEvent.changeText(screen.getByLabelText('Task title'), 'New task');
-    await fireEvent.changeText(screen.getByLabelText('Deadline'), '2026-02-31');
     await fireEvent.press(screen.getByRole('button', { name: 'Save task' }));
-    expect(await screen.findByText(/valid date/)).toBeTruthy();
+    expect(await screen.findByText(/Enter a task title/)).toBeTruthy();
     expect(taskService.createTask).not.toHaveBeenCalled();
 
-    await fireEvent.changeText(screen.getByLabelText('Deadline'), '');
+    await fireEvent.changeText(screen.getByLabelText('Task title'), 'New task');
     let resolveCreate: ((value: typeof task) => void) | undefined;
     jest.mocked(taskService.createTask).mockImplementation(
       () =>
