@@ -66,4 +66,28 @@ describe('notification destinations', () => {
       }),
     ).toBeNull();
   });
+
+  it('opens verified task comment targets and preserves project comment targets', () => {
+    expect(
+      getNotificationTarget({
+        ...base,
+        type: 'task_mentioned',
+        data: { taskId: 'task-1', commentId: 'comment-1' },
+      }),
+    ).toEqual({ kind: 'task-comment', taskId: 'task-1', commentId: 'comment-1' });
+    expect(
+      getNotificationTarget({
+        ...base,
+        type: 'comment_added',
+        data: { projectId: 'project-1', action: 'view_project', commentId: 'comment-1' },
+      }),
+    ).toEqual({ kind: 'project', id: 'project-1' });
+    expect(
+      getNotificationTarget({
+        ...base,
+        type: 'comment_added',
+        data: { taskId: 'task-1', action: 'view_task' },
+      }),
+    ).toEqual({ kind: 'task', id: 'task-1' });
+  });
 });

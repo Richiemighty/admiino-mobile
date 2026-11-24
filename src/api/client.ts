@@ -10,6 +10,17 @@ export interface ApiRequestOptions {
   workspaceId?: string | null;
   timeoutMs?: number;
   signal?: AbortSignal;
+  redirect?: RequestRedirect;
+}
+
+export interface ApiBinaryResponse {
+  bytes: Uint8Array;
+  contentType: string | null;
+  contentDisposition: string | null;
+}
+
+function isFormData(value: unknown): value is FormData {
+  return typeof FormData !== 'undefined' && value instanceof FormData;
 }
 
 export class ApiClient {
@@ -19,6 +30,83 @@ export class ApiClient {
   ) {}
 
   async request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+    return this.execute(path, options, async (response) => {
+      const text = await response.text();
+      let payload: unknown = null;
+      if (text) {
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          throw new ApiError('The backend returned an invalid response.', response.status);
+        }
+      }
+
+      if (payload === null)
+        throw new ApiError('The backend returned an invalid response.', response.status);
+      return payload as T;
+    });
+  }
+
+  async requestBinary(
+    path: string,
+    options: Omit<ApiRequestOptions, 'body'>,
+    maxBytes: number,
+  ): Promise<ApiBinaryResponse> {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) {
+      throw new ApiError('The file download limit is invalid.', 400);
+    }
+
+    return this.execute(path, options, async (response) => {
+      const contentLength = Number(response.headers.get('content-length'));
+      if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+        throw new ApiError('This file exceeds the download size limit.', 413);
+      }
+
+      let bytes: Uint8Array;
+      const reader = response.body?.getReader();
+      if (reader) {
+        const chunks: Uint8Array[] = [];
+        let totalBytes = 0;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            totalBytes += value.byteLength;
+            if (totalBytes > maxBytes) {
+              await reader.cancel();
+              throw new ApiError('This file exceeds the download size limit.', 413);
+            }
+            chunks.push(value);
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        bytes = new Uint8Array(totalBytes);
+        let offset = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+      } else {
+        bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.byteLength > maxBytes) {
+          throw new ApiError('This file exceeds the download size limit.', 413);
+        }
+      }
+
+      return {
+        bytes,
+        contentType: response.headers.get('content-type'),
+        contentDisposition: response.headers.get('content-disposition'),
+      };
+    });
+  }
+
+  private async execute<T>(
+    path: string,
+    options: ApiRequestOptions,
+    parseResponse: (response: Response) => Promise<T>,
+  ): Promise<T> {
     if (!this.baseUrl) {
       throw new ApiError('API connectivity is not configured for this environment.', 0);
     }
@@ -35,7 +123,17 @@ export class ApiClient {
       Accept: 'application/json',
       ...options.headers,
     };
-    if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+    const formData = isFormData(options.body);
+    const requestBody: BodyInit | undefined =
+      options.body === undefined
+        ? undefined
+        : isFormData(options.body)
+          ? options.body
+          : JSON.stringify(options.body);
+    for (const headerName of Object.keys(headers)) {
+      if (formData && headerName.toLowerCase() === 'content-type') delete headers[headerName];
+    }
+    if (options.body !== undefined && !formData) headers['Content-Type'] = 'application/json';
     if (options.token) headers.Authorization = `Bearer ${options.token}`;
     if (options.workspaceId) headers['x-company-id'] = options.workspaceId;
 
@@ -45,8 +143,9 @@ export class ApiClient {
         response = await this.fetchImpl(`${this.baseUrl}${normalizedPath}`, {
           method: options.method ?? 'GET',
           headers,
-          body: options.body === undefined ? undefined : JSON.stringify(options.body),
+          body: requestBody,
           signal: timeoutSignal,
+          redirect: options.redirect,
         });
       } catch (error) {
         if (controller.signal.aborted && !options.signal?.aborted) throw new ApiTimeoutError();
@@ -55,17 +154,16 @@ export class ApiClient {
         throw new ApiNetworkError();
       }
 
-      const text = await response.text();
-      let payload: unknown = null;
-      if (text) {
-        try {
-          payload = JSON.parse(text);
-        } catch {
-          throw new ApiError('The backend returned an invalid response.', response.status);
-        }
-      }
-
       if (!response.ok) {
+        const text = await response.text();
+        let payload: unknown = null;
+        if (text) {
+          try {
+            payload = JSON.parse(text);
+          } catch {
+            payload = null;
+          }
+        }
         const errorPayload =
           payload && typeof payload === 'object' ? (payload as ApiErrorPayload) : undefined;
         throw new ApiError(
@@ -75,9 +173,7 @@ export class ApiClient {
         );
       }
 
-      if (payload === null)
-        throw new ApiError('The backend returned an invalid response.', response.status);
-      return payload as T;
+      return await parseResponse(response);
     } finally {
       clearTimeout(timeout);
     }

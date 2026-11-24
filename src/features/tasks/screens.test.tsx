@@ -327,6 +327,24 @@ describe('P12 task lists, detail, and forms', () => {
     expect(screen.getByText(/Status Changed/)).toBeTruthy();
   });
 
+  it('opens the conversation while preserving project and Inbox return context', async () => {
+    await renderWithProviders(
+      <TaskDetailsScreen taskId={task.id} returnProjectId="project-1" returnToInbox />,
+    );
+    expect(await screen.findByText(task.title)).toBeTruthy();
+
+    await fireEvent.press(screen.getByRole('button', { name: 'Open task conversation' }));
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/tasks/[id]/conversation',
+      params: {
+        id: task.id,
+        projectId: 'project-1',
+        fromProject: '1',
+        returnTo: 'inbox',
+      },
+    });
+  });
+
   it('allows an assigned member to update status through task access and waits for confirmation', async () => {
     const updatedTask = { ...task, status: 'in_progress' as const };
     jest.mocked(taskService.updateTask).mockResolvedValue(updatedTask);

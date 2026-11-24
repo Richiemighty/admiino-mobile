@@ -99,10 +99,27 @@ describe('P12 task API contracts', () => {
       page: 1,
       canViewAllTasks: true,
     });
-
     expect(requests).toHaveLength(2);
     expect(requests[0]?.url.searchParams.get('relation')).toBe('created');
     expect(requests[1]?.url.searchParams.get('scope')).toBe('workspace');
+  });
+
+  it('downloads files through the authenticated task route and refuses provider redirects', async () => {
+    const requests: { url: URL; init: RequestInit }[] = [];
+    const service = serviceFor(() => ({ status: 'success', data: {} }), requests);
+
+    await service.downloadAttachment('task-1', 'file-1', workspaceId, 'device');
+    expect(requests[0]?.url.pathname).toBe('/api/v1/tasks/task-1/attachments/file-1/download');
+    expect(requests[0]?.init.redirect).toBe('error');
+    expect(new Headers(requests[0]?.init.headers).get('Authorization')).toBe(
+      'Bearer secure-access-token',
+    );
+    expect(new Headers(requests[0]?.init.headers).get('x-company-id')).toBe(workspaceId);
+
+    await expect(
+      service.downloadAttachment('task-1', 'drive-file', workspaceId, 'google-drive'),
+    ).rejects.toMatchObject({ status: 501 });
+    expect(requests).toHaveLength(1);
   });
 
   it('validates task detail access and rejects a task from another workspace', async () => {

@@ -32,6 +32,7 @@ const PROJECT_NOTIFICATION_TYPES = new Set([
 
 export type NotificationTarget =
   | { kind: 'task'; id: string }
+  | { kind: 'task-comment'; taskId: string; commentId: string }
   | { kind: 'project'; id: string }
   | { kind: 'join-request'; id: string }
   | { kind: 'access-request'; id: string };
@@ -48,13 +49,22 @@ export function getNotificationTarget(notification: NotificationRecord): Notific
   const data = notification.data;
   if (!data) return null;
 
+  if (notification.type === 'task_mentioned' || notification.type === 'comment_added') {
+    const taskId = dataId(data, 'taskId', 'task_id');
+    const commentId = dataId(data, 'commentId', 'comment_id');
+    if (taskId && commentId) return { kind: 'task-comment', taskId, commentId };
+  }
+  if (
+    PROJECT_NOTIFICATION_TYPES.has(notification.type) ||
+    data.action === 'view_project' ||
+    (notification.type === 'comment_added' && dataId(data, 'projectId', 'project_id') !== null)
+  ) {
+    const id = dataId(data, 'projectId', 'project_id');
+    return id ? { kind: 'project', id } : null;
+  }
   if (TASK_NOTIFICATION_TYPES.has(notification.type) || data.action === 'view_task') {
     const id = dataId(data, 'taskId', 'task_id');
     return id ? { kind: 'task', id } : null;
-  }
-  if (PROJECT_NOTIFICATION_TYPES.has(notification.type) || data.action === 'view_project') {
-    const id = dataId(data, 'projectId', 'project_id');
-    return id ? { kind: 'project', id } : null;
   }
   if (notification.type === 'workspace_join_requested') {
     const id = dataId(data, 'requestId');

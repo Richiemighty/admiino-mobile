@@ -1,7 +1,16 @@
+import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
 import { router, useFocusEffect } from 'expo-router';
-import { ArrowLeft, ChevronRight } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  ChevronRight,
+  FileText,
+  MessageCircle,
+  Paperclip,
+  X,
+} from 'lucide-react-native';
 import type { ReactNode } from 'react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
@@ -19,9 +28,12 @@ import {
 } from '../../components/ui';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
+import type { LocalTaskFile } from './fileContracts';
+import { isSupportedTaskFile, validateTaskFile } from './fileContracts';
 import {
   TASK_STATUSES,
   type TaskAccess,
+  type TaskAttachmentRecord,
   type TaskDependencyGraph,
   type TaskDetails,
   type TaskRecord,
@@ -61,6 +73,21 @@ function fullDate(value: string | null | undefined, isDeadline = false): string 
   return Number.isNaN(date.getTime())
     ? 'Deadline unavailable'
     : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date);
+}
+
+function fileSizeLabel(size: number | null | undefined): string | null {
+  if (typeof size !== 'number' || !Number.isFinite(size) || size < 0) return null;
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function uploadedByLabel(
+  uploadedBy: string | null | undefined,
+  currentUserId: string | undefined,
+): string | null {
+  if (!uploadedBy) return null;
+  return uploadedBy === currentUserId ? 'Uploaded by you' : 'Uploaded by a workspace member';
 }
 
 function taskErrorMessage(error: unknown): string {
@@ -219,8 +246,22 @@ export function TaskDetailsScreen({
   const [assigneesSheetVisible, setAssigneesSheetVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState<LocalTaskFile | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [attachmentUncertain, setAttachmentUncertain] = useState(false);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [retry, setRetry] = useState(0);
   const request = useRef<AbortController | null>(null);
+  const currentContext = `${workspaceId ?? ''}:${taskId}`;
+  const contextRef = useRef(currentContext);
+  const previousAttachmentContext = useRef(currentContext);
+  const uncertainUpload = useRef<{
+    workspaceId: string;
+    taskId: string;
+    fileName: string;
+    fileSize: number;
+    existingAttachmentIds: Set<string>;
+  } | null>(null);
   const current =
     loadedTask?.workspaceId === workspaceId && loadedTask.taskId === taskId ? loadedTask : null;
   const currentDependencies =
@@ -241,6 +282,29 @@ export function TaskDetailsScreen({
       router.replace('/(tabs)/tasks');
     }
   };
+
+  useEffect(() => {
+    contextRef.current = currentContext;
+  }, [currentContext]);
+
+  useEffect(() => {
+    const previousContext = previousAttachmentContext.current;
+    if (previousContext !== currentContext) {
+      if (pendingAttachment) {
+        try {
+          const file = new File(pendingAttachment.file.uri);
+          if (file.exists) file.delete();
+        } catch {
+          console.warn('Unable to remove a temporary task attachment.');
+        }
+      }
+      setPendingAttachment(null);
+      setAttachmentError(null);
+      setAttachmentUncertain(false);
+      uncertainUpload.current = null;
+    }
+    previousAttachmentContext.current = currentContext;
+  }, [currentContext, pendingAttachment]);
 
   useFocusEffect(
     useCallback(() => {
@@ -366,6 +430,157 @@ export function TaskDetailsScreen({
     }
   };
 
+  const selectTaskAttachment = async () => {
+    if (uploadingAttachment || attachmentUncertain) return;
+    const selectionContext = currentContext;
+    setAttachmentError(null);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset) return;
+      const file = new File(asset.uri);
+      const mimeType = asset.mimeType ?? file.type ?? '';
+      const size = asset.size ?? file.size;
+      validateTaskFile(asset.name, mimeType, size);
+      if (contextRef.current !== selectionContext) {
+        if (file.exists) file.delete();
+        return;
+      }
+      setPendingAttachment({ file, name: asset.name, mimeType, size });
+    } catch (error) {
+      setAttachmentError(
+        error instanceof ApiError
+          ? error.message
+          : 'The selected file could not be read. Choose it again and retry.',
+      );
+    }
+  };
+
+  const discardTaskAttachment = () => {
+    if (!pendingAttachment) return;
+    try {
+      const file = new File(pendingAttachment.file.uri);
+      if (file.exists) file.delete();
+    } catch {
+      console.warn('Unable to remove a temporary task attachment.');
+    }
+    setPendingAttachment(null);
+    setAttachmentError(null);
+    setAttachmentUncertain(false);
+    uncertainUpload.current = null;
+  };
+
+  const checkTaskAttachmentUpload = async () => {
+    const attempt = uncertainUpload.current;
+    if (!attempt) return;
+    setAttachmentError(null);
+    try {
+      const latest = await taskService.getTask(attempt.taskId, attempt.workspaceId);
+      if (contextRef.current !== `${attempt.workspaceId}:${attempt.taskId}`) return;
+      setLoadedTask({ workspaceId: attempt.workspaceId, taskId: attempt.taskId, details: latest });
+      const uploaded = latest.task.attachments?.find(
+        (attachment) =>
+          attachment.id &&
+          !attempt.existingAttachmentIds.has(attachment.id) &&
+          (attachment.fileName ?? attachment.name) === attempt.fileName &&
+          attachment.fileSize === attempt.fileSize,
+      );
+      if (uploaded) {
+        discardTaskAttachment();
+        setStatusMessage('Attachment uploaded.');
+      } else {
+        setAttachmentError(
+          'The upload is not listed yet. Refresh again before deciding whether to retry.',
+        );
+      }
+    } catch (error) {
+      setAttachmentError(
+        error instanceof ApiNetworkError
+          ? 'Could not check the attachment list while offline.'
+          : 'The attachment list could not be refreshed. Please try again.',
+      );
+    }
+  };
+
+  const uploadTaskAttachment = async () => {
+    if (!pendingAttachment || !current || uploadingAttachment || attachmentUncertain) return;
+    const uploadContext = `${current.workspaceId}:${current.taskId}`;
+    setUploadingAttachment(true);
+    setAttachmentError(null);
+    setStatusMessage(null);
+    const existingAttachmentIds = new Set(
+      (current.details.task.attachments ?? [])
+        .map((attachment) => attachment.id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    try {
+      const uploaded = await taskService.uploadAttachment(
+        taskId,
+        current.workspaceId,
+        pendingAttachment,
+        current.details.access,
+      );
+      if (contextRef.current !== uploadContext) return;
+      setLoadedTask((loadedValue) =>
+        loadedValue?.workspaceId === current.workspaceId && loadedValue.taskId === taskId
+          ? {
+              ...loadedValue,
+              details: {
+                ...loadedValue.details,
+                task: {
+                  ...loadedValue.details.task,
+                  attachments: [...(loadedValue.details.task.attachments ?? []), uploaded],
+                },
+              },
+            }
+          : loadedValue,
+      );
+      discardTaskAttachment();
+      setStatusMessage('Attachment uploaded.');
+    } catch (error) {
+      if (contextRef.current !== uploadContext) return;
+      if (
+        error instanceof ApiNetworkError ||
+        error instanceof ApiTimeoutError ||
+        (error instanceof ApiError && error.status >= 500)
+      ) {
+        uncertainUpload.current = {
+          workspaceId: current.workspaceId,
+          taskId,
+          fileName: pendingAttachment.name,
+          fileSize: pendingAttachment.size,
+          existingAttachmentIds,
+        };
+        setAttachmentUncertain(true);
+        setAttachmentError(
+          'The upload result is uncertain. Check the task attachments before retrying.',
+        );
+      } else if (error instanceof ApiError && error.status === 401) {
+        try {
+          await logout();
+          router.replace('/sign-in');
+        } catch {
+          setAttachmentError('Your session could not be cleared safely. Please try again.');
+        }
+      } else if (error instanceof ApiError && error.status === 423) {
+        router.replace('/workspace-suspended');
+      } else {
+        setAttachmentError(
+          error instanceof ApiError
+            ? error.message
+            : 'The file could not be uploaded. Please try again.',
+        );
+      }
+    } finally {
+      if (contextRef.current === uploadContext) setUploadingAttachment(false);
+    }
+  };
+
   if (!isReady || (loading && !current)) {
     return (
       <AppScreen>
@@ -442,6 +657,39 @@ export function TaskDetailsScreen({
       id: task.id,
       ...(returnProjectId ? { projectId: returnProjectId, fromProject: '1' } : {}),
     },
+  };
+  const canAttachFiles = access?.canEdit === true && access.readOnly === false;
+  const conversationRoute = {
+    pathname: '/tasks/[id]/conversation' as const,
+    params: {
+      id: task.id,
+      ...(returnProjectId ? { projectId: returnProjectId, fromProject: '1' } : {}),
+      ...(returnToInbox ? { returnTo: 'inbox' } : {}),
+    },
+  };
+  const openAttachment = (attachment: TaskAttachmentRecord) => {
+    const fileName = attachment.fileName ?? attachment.name ?? 'Task attachment';
+    const fileType = attachment.mimeType ?? attachment.fileType ?? '';
+    if (
+      !attachment.id ||
+      attachment.source === 'google-drive' ||
+      !isSupportedTaskFile(fileName, fileType)
+    ) {
+      return;
+    }
+    router.push({
+      pathname: '/file-viewer',
+      params: {
+        taskId: task.id,
+        attachmentId: attachment.id,
+        fileName,
+        fileType,
+        fileSize: attachment.fileSize == null ? '' : String(attachment.fileSize),
+        source: attachment.source ?? '',
+        ...(returnProjectId ? { projectId: returnProjectId, fromProject: '1' } : {}),
+        ...(returnToInbox ? { returnTo: 'inbox' } : {}),
+      },
+    });
   };
 
   return (
@@ -526,6 +774,32 @@ export function TaskDetailsScreen({
             <DetailLine label="Project" value={task.project?.name ?? 'No project'} />
             <DetailLine label="Team" value={task.team?.name ?? 'No team'} />
           </AppCard>
+        </Section>
+
+        <Section title="Collaboration">
+          <Pressable
+            accessibilityLabel="Open task conversation"
+            accessibilityRole="button"
+            onPress={() => router.push(conversationRoute)}
+            style={({ pressed }) => ({
+              minHeight: themeTokens.touchTarget.minimum,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: themeTokens.spacing.sm,
+              borderRadius: themeTokens.radius.md,
+              backgroundColor: pressed ? colors.surfaceSubtle : colors.surface,
+              paddingHorizontal: themeTokens.spacing.sm,
+            })}
+          >
+            <MessageCircle color={colors.primaryAction} size={19} />
+            <View style={{ flex: 1 }}>
+              <AppText variant="label">Conversation</AppText>
+              <AppText tone="secondary" variant="caption">
+                View comments and supporting files
+              </AppText>
+            </View>
+            <ChevronRight color={colors.textMuted} size={18} />
+          </Pressable>
         </Section>
 
         <View style={{ gap: themeTokens.spacing.xs }}>
@@ -652,18 +926,127 @@ export function TaskDetailsScreen({
           </Section>
         )}
 
-        {attachments.length > 0 && (
+        {(attachments.length > 0 || canAttachFiles) && (
           <Section title={`Attachments (${attachments.length})`}>
             {attachments.map((attachment, index) => (
-              <AppCard
+              <Pressable
+                accessibilityLabel={`Open attachment ${attachment.fileName ?? attachment.name ?? 'file'}`}
+                accessibilityRole="button"
+                accessibilityState={{
+                  disabled:
+                    !attachment.id ||
+                    attachment.source === 'google-drive' ||
+                    !isSupportedTaskFile(
+                      attachment.fileName ?? attachment.name ?? '',
+                      attachment.mimeType ?? attachment.fileType ?? '',
+                    ),
+                }}
+                disabled={
+                  !attachment.id ||
+                  attachment.source === 'google-drive' ||
+                  !isSupportedTaskFile(
+                    attachment.fileName ?? attachment.name ?? '',
+                    attachment.mimeType ?? attachment.fileType ?? '',
+                  )
+                }
                 key={attachment.id ?? `${attachment.fileName ?? attachment.name}-${index}`}
-                padding="sm"
+                onPress={() => openAttachment(attachment)}
+                style={({ pressed }) => ({
+                  minHeight: themeTokens.touchTarget.minimum,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: themeTokens.spacing.sm,
+                  borderRadius: themeTokens.radius.sm,
+                  backgroundColor: pressed ? colors.surfaceSubtle : colors.surface,
+                  paddingHorizontal: themeTokens.spacing.sm,
+                })}
               >
-                <AppText numberOfLines={2} variant="caption">
-                  {attachment.fileName ?? attachment.name ?? 'Task attachment'}
-                </AppText>
-              </AppCard>
+                <FileText color={colors.primaryAction} size={19} />
+                <View style={{ flex: 1 }}>
+                  <AppText numberOfLines={1} variant="label">
+                    {attachment.fileName ?? attachment.name ?? 'Task attachment'}
+                  </AppText>
+                  <AppText tone="secondary" variant="caption">
+                    {[
+                      fileSizeLabel(attachment.fileSize),
+                      uploadedByLabel(attachment.uploadedBy, permissions?.userId),
+                      attachment.createdAt ? fullDate(attachment.createdAt) : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </AppText>
+                  {attachment.source === 'google-drive' && (
+                    <AppText tone="warning" variant="caption">
+                      Secure in-app opening is unavailable for Google Drive links.
+                    </AppText>
+                  )}
+                </View>
+                {attachment.source !== 'google-drive' && (
+                  <ChevronRight color={colors.textMuted} size={18} />
+                )}
+              </Pressable>
             ))}
+            {attachments.length === 0 && (
+              <AppText tone="secondary" variant="caption">
+                No attachments yet.
+              </AppText>
+            )}
+            {canAttachFiles && !pendingAttachment && (
+              <AppButton
+                accessibilityLabel="Add task attachment"
+                onPress={() => void selectTaskAttachment()}
+                variant="outline"
+              >
+                Add attachment
+              </AppButton>
+            )}
+            {pendingAttachment && (
+              <AppCard padding="sm" style={{ gap: themeTokens.spacing.xs }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: themeTokens.spacing.xs,
+                  }}
+                >
+                  <Paperclip color={colors.primaryAction} size={17} />
+                  <AppText numberOfLines={1} style={{ flex: 1 }} variant="caption">
+                    {pendingAttachment.name} · {fileSizeLabel(pendingAttachment.size)}
+                  </AppText>
+                  <IconButton
+                    accessibilityLabel="Remove selected attachment"
+                    disabled={uploadingAttachment || attachmentUncertain}
+                    icon={<X color={colors.textMuted} size={18} />}
+                    onPress={discardTaskAttachment}
+                  />
+                </View>
+                {attachmentUncertain ? (
+                  <AppButton
+                    accessibilityLabel="Check task attachment upload status"
+                    disabled={uploadingAttachment}
+                    onPress={() => void checkTaskAttachmentUpload()}
+                    variant="outline"
+                  >
+                    Check attachment status
+                  </AppButton>
+                ) : (
+                  <AppButton
+                    accessibilityLabel="Upload task attachment"
+                    disabled={uploadingAttachment}
+                    onPress={() => void uploadTaskAttachment()}
+                  >
+                    {uploadingAttachment ? 'Uploading…' : 'Upload attachment'}
+                  </AppButton>
+                )}
+              </AppCard>
+            )}
+            {attachmentError && (
+              <InlineError
+                message={attachmentError}
+                onRetry={attachmentUncertain ? () => void checkTaskAttachmentUpload() : undefined}
+                retryLabel="Check attachment status"
+              />
+            )}
           </Section>
         )}
 

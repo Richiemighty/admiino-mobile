@@ -2,6 +2,7 @@ import { apiClient, ApiError } from '../../api';
 import type { ApiClient } from '../../api/client';
 import type { SessionService } from '../../auth/session';
 import { sessionService } from '../../auth/session';
+import { type LocalTaskFile, MAX_TASK_FILE_BYTES, validateTaskFile } from './fileContracts';
 
 export const TASK_STATUSES = [
   'pending',
@@ -25,6 +26,19 @@ export interface TaskPerson {
   email?: string | null;
 }
 
+export interface TaskAttachmentRecord {
+  id?: string;
+  taskId?: string;
+  fileName?: string | null;
+  fileType?: string | null;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  uploadedBy?: string | null;
+  createdAt?: string | null;
+  source?: string | null;
+  name?: string | null;
+}
+
 export interface TaskRecord {
   id: string;
   companyId: string;
@@ -41,14 +55,7 @@ export interface TaskRecord {
   assignee?: TaskPerson | null;
   assignees?: TaskPerson[] | null;
   subtasks?: { id: string; title: string; status: TaskStatus | string }[] | null;
-  attachments?:
-    | {
-        id?: string;
-        fileName?: string;
-        fileType?: string;
-        name?: string;
-      }[]
-    | null;
+  attachments?: TaskAttachmentRecord[] | null;
   activities?:
     | {
         id: string;
@@ -63,6 +70,7 @@ export interface TaskAccess {
   canView: boolean;
   canEdit: boolean;
   readOnly: boolean;
+  canCollaborate?: boolean;
 }
 
 export interface TaskListItem extends TaskRecord {
@@ -166,8 +174,12 @@ function isTaskPerson(value: unknown): value is TaskPerson {
   );
 }
 
-function isOptionalString(value: unknown): boolean {
+function isOptionalString(value: unknown): value is string | null | undefined {
   return value === undefined || value === null || typeof value === 'string';
+}
+
+function isOptionalNumber(value: unknown): value is number | null | undefined {
+  return value === undefined || value === null || typeof value === 'number';
 }
 
 function isTaskAccess(value: unknown): value is TaskAccess {
@@ -175,8 +187,51 @@ function isTaskAccess(value: unknown): value is TaskAccess {
     isRecord(value) &&
     typeof value.canView === 'boolean' &&
     typeof value.canEdit === 'boolean' &&
-    typeof value.readOnly === 'boolean'
+    typeof value.readOnly === 'boolean' &&
+    (value.canCollaborate === undefined || typeof value.canCollaborate === 'boolean')
   );
+}
+
+function parseTaskAttachment(value: unknown): TaskAttachmentRecord | null {
+  if (!isRecord(value)) return null;
+  const {
+    id,
+    taskId,
+    fileName,
+    fileType,
+    mimeType,
+    fileSize,
+    uploadedBy,
+    createdAt,
+    source,
+    name,
+  } = value;
+  if (
+    (id !== undefined && typeof id !== 'string') ||
+    (taskId !== undefined && typeof taskId !== 'string') ||
+    !isOptionalString(fileName) ||
+    !isOptionalString(fileType) ||
+    !isOptionalString(mimeType) ||
+    !isOptionalNumber(fileSize) ||
+    !isOptionalString(uploadedBy) ||
+    !isOptionalString(createdAt) ||
+    !isOptionalString(source) ||
+    !isOptionalString(name)
+  ) {
+    return null;
+  }
+  return {
+    id,
+    taskId,
+    fileName,
+    fileType,
+    mimeType,
+    fileSize,
+    uploadedBy,
+    createdAt,
+    source,
+    name,
+  };
 }
 
 function isTaskRecord(value: unknown): value is TaskRecord {
@@ -242,14 +297,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     value.attachments !== undefined &&
     value.attachments !== null &&
     (!Array.isArray(value.attachments) ||
-      !value.attachments.every(
-        (attachment) =>
-          isRecord(attachment) &&
-          isOptionalString(attachment.id) &&
-          isOptionalString(attachment.fileName) &&
-          isOptionalString(attachment.fileType) &&
-          isOptionalString(attachment.name),
-      ))
+      !value.attachments.every((attachment) => parseTaskAttachment(attachment) !== null))
   ) {
     return false;
   }
@@ -290,7 +338,21 @@ function requireWorkspaceTask(task: unknown, workspaceId: string, taskId?: strin
   if (task.project?.companyId && task.project.companyId !== workspaceId) {
     throw new ApiError('The task project is not part of the active workspace.', 502);
   }
-  return task;
+  return {
+    ...task,
+    attachments: task.attachments?.map((attachment) => ({
+      id: attachment.id,
+      taskId: attachment.taskId,
+      fileName: attachment.fileName,
+      fileType: attachment.fileType,
+      mimeType: attachment.mimeType,
+      fileSize: attachment.fileSize,
+      uploadedBy: attachment.uploadedBy,
+      createdAt: attachment.createdAt,
+      source: attachment.source,
+      name: attachment.name,
+    })),
+  };
 }
 
 function displayName(value: unknown): value is { id: string; name: string; companyId?: string } {
@@ -381,6 +443,75 @@ export class TaskService {
     }
     if (!data.access.canView) throw new ApiError('You do not have access to this task.', 403);
     return { task, access: data.access };
+  }
+
+  async uploadAttachment(
+    taskId: string,
+    workspaceId: string,
+    file: LocalTaskFile,
+    access: TaskAccess,
+    signal?: AbortSignal,
+  ): Promise<TaskAttachmentRecord> {
+    if (access.canEdit !== true || access.readOnly) {
+      throw new ApiError('You do not have permission to attach files to this task.', 403);
+    }
+    if (!taskId || !workspaceId) {
+      throw new ApiError('The task is unavailable in the active workspace.', 400);
+    }
+    validateTaskFile(file.name, file.mimeType, file.size);
+
+    const token = await this.sessions.getAccessToken();
+    const body = new FormData();
+    body.append('file', file.file, file.name);
+    const response: unknown = await this.client.post(
+      `/task-attachments/${encodeURIComponent(taskId)}/upload`,
+      body,
+      { token, workspaceId, signal, timeoutMs: 120000 },
+    );
+    requireSuccess(response, 'The attachment upload response was invalid.');
+    const attachment = parseTaskAttachment(response.attachment);
+    if (!attachment || typeof attachment.id !== 'string') {
+      throw new ApiError('The backend returned invalid attachment information.', 502);
+    }
+    if (attachment.taskId && attachment.taskId !== taskId) {
+      throw new ApiError('The uploaded file belongs to a different task.', 502);
+    }
+    return {
+      id: attachment.id,
+      taskId: attachment.taskId,
+      fileName: attachment.fileName,
+      fileType: attachment.fileType,
+      mimeType: attachment.mimeType,
+      fileSize: attachment.fileSize,
+      uploadedBy: attachment.uploadedBy,
+      createdAt: attachment.createdAt,
+      source: attachment.source,
+      name: attachment.name,
+    };
+  }
+
+  async downloadAttachment(
+    taskId: string,
+    attachmentId: string,
+    workspaceId: string,
+    source: string | null | undefined,
+    signal?: AbortSignal,
+  ) {
+    if (!taskId || !attachmentId || !workspaceId) {
+      throw new ApiError('The requested file is unavailable.', 400);
+    }
+    if (source === 'google-drive') {
+      throw new ApiError(
+        'This Google Drive attachment cannot be opened securely in the mobile app.',
+        501,
+      );
+    }
+    const token = await this.sessions.getAccessToken();
+    return this.client.requestBinary(
+      `/tasks/${encodeURIComponent(taskId)}/attachments/${encodeURIComponent(attachmentId)}/download`,
+      { token, workspaceId, signal, timeoutMs: 60000, redirect: 'error' },
+      MAX_TASK_FILE_BYTES,
+    );
   }
 
   async getDependencies(

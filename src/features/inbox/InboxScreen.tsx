@@ -544,8 +544,12 @@ function InboxContent({
     setOpeningId(notification.id);
     setOperationError(null);
     try {
-      if (target.kind === 'task') {
-        await taskService.getTask(target.id, workspaceId, controller.signal);
+      if (target.kind === 'task' || target.kind === 'task-comment') {
+        await taskService.getTask(
+          target.kind === 'task' ? target.id : target.taskId,
+          workspaceId,
+          controller.signal,
+        );
       } else if (target.kind === 'project') {
         await projectService.getProject(target.id, workspaceId, controller.signal);
       } else if (target.kind === 'join-request') {
@@ -586,6 +590,15 @@ function InboxContent({
       if (activeWorkspace.current === workspaceId && !controller.signal.aborted) {
         if (target.kind === 'task') {
           router.push({ pathname: '/tasks/[id]', params: { id: target.id, returnTo: 'inbox' } });
+        } else if (target.kind === 'task-comment') {
+          router.push({
+            pathname: '/tasks/[id]/conversation',
+            params: {
+              id: target.taskId,
+              commentId: target.commentId,
+              fromInbox: '1',
+            },
+          });
         } else if (target.kind === 'project') {
           router.push({
             pathname: '/projects/[id]',

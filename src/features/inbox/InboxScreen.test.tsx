@@ -256,6 +256,32 @@ describe('Inbox screen', () => {
     );
   });
 
+  it('preflights task-comment notifications and opens the verified conversation target', async () => {
+    const commentNotification: NotificationRecord = {
+      ...notification,
+      id: 'notice-comment',
+      type: 'comment_added',
+      title: 'New comment on task',
+      data: { taskId: 'task-1', action: 'view_task', commentId: 'comment-9' },
+    };
+    mockListNotifications.mockResolvedValue({
+      notifications: [commentNotification],
+      results: 1,
+      hasMore: false,
+    });
+    const screen = await renderWithProviders(<InboxScreen />);
+
+    fireEvent.press(await screen.findByLabelText('Unread. New comment on task. Open update'));
+
+    await waitFor(() =>
+      expect(mockGetTask).toHaveBeenCalledWith('task-1', workspaceId, expect.any(AbortSignal)),
+    );
+    expect(router.push).toHaveBeenCalledWith({
+      pathname: '/tasks/[id]/conversation',
+      params: { id: 'task-1', commentId: 'comment-9', fromInbox: '1' },
+    });
+  });
+
   it('preflights project notifications and opens the existing project route', async () => {
     const projectNotification: NotificationRecord = {
       ...notification,

@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 
-import { TaskDetailsScreen } from '../../src/features/tasks/TaskDetailsScreen';
+import { TaskDetailsScreen } from '../../../src/features/tasks/TaskDetailsScreen';
 
 export default function TaskDetailsRoute() {
   const { id, projectId, fromProject, returnTo } = useLocalSearchParams<{

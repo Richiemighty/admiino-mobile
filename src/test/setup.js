@@ -4,6 +4,7 @@ process.env.EXPO_PUBLIC_APP_ENV = 'development';
 process.env.EXPO_PUBLIC_API_REQUIRED = 'false';
 
 jest.mock('expo-router', () => require('./mocks/expo-router'));
+jest.mock('expo-document-picker', () => ({ getDocumentAsync: jest.fn() }));
 jest.mock('expo-symbols', () => ({
   SymbolView: () => null,
 }));
