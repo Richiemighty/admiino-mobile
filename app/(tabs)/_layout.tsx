@@ -103,7 +103,6 @@ function WorkspaceTabs() {
           tabBarIcon: ({ color, size }) => <CalendarDays color={color} size={size} />,
         }}
       />
-      <Tabs.Screen name="inbox" options={{ href: null }} />
       <Tabs.Screen
         name="more"
         options={{

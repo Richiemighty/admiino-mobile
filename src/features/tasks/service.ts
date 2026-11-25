@@ -427,8 +427,18 @@ export class TaskService {
       throw new ApiError('The backend returned an invalid task list.', 502);
     }
 
+    const listTasks = data.tasks as (TaskRecord & { access?: unknown })[];
+    if (!listTasks.every((task) => task.access === undefined || isTaskAccess(task.access))) {
+      throw new ApiError('The backend returned invalid task access information.', 502);
+    }
     return {
-      tasks: data.tasks,
+      tasks: listTasks.map((task) => {
+        const { access, ...taskRecord } = task;
+        return {
+          ...taskRecord,
+          ...(isTaskAccess(access) ? { access } : {}),
+        };
+      }),
       total: Number(response.total),
       page: filters.page,
     };

@@ -20,6 +20,7 @@ import {
   InlineError,
   LoadingState,
 } from '../../components/ui';
+import { traceNavigation } from '../../navigation/devNavigationTrace';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { projectService } from '../projects/service';
@@ -307,6 +308,10 @@ function NotificationRow({
 
 export function InboxScreen() {
   const { activeWorkspace, permissions, status, workspacePermissionStatus, logout } = useAuth();
+  useEffect(() => {
+    traceNavigation({ event: 'inbox-mounted', pathname: '/inbox' });
+    return () => traceNavigation({ event: 'inbox-unmounted', pathname: '/inbox' });
+  }, []);
   const workspaceId = activeWorkspace?.companyId ?? null;
   if (!workspaceId) {
     return (

@@ -195,6 +195,11 @@ describe('P12 task lists, detail, and forms', () => {
     });
     await renderWithProviders(<TasksScreen />);
     await screen.findByText('Swipeable task');
+    expect(await screen.findByLabelText('Change status for Swipeable task')).toBeTruthy();
+    expect(await screen.findByLabelText('Edit Swipeable task')).toBeTruthy();
+    expect(
+      await screen.findByLabelText('Watch status unavailable for Swipeable task'),
+    ).toBeTruthy();
 
     await fireEvent(
       await screen.findByLabelText('Open task Swipeable task'),
@@ -393,6 +398,18 @@ describe('P12 task lists, detail, and forms', () => {
       'workspace-1',
       { status: 'in_progress' },
       editableAccess,
+    );
+  });
+
+  it('resolves missing list access before exposing swipe actions', async () => {
+    jest.mocked(taskService.listTasks).mockResolvedValue(page('workspace-1', 'Access pending'));
+    await renderWithProviders(<TasksScreen />);
+    const row = await screen.findByTestId('task-swipeable-workspace-1-Access pending');
+    expect(screen.queryByLabelText('Edit Access pending')).toBeNull();
+
+    await fireEvent(row, 'swipeableOpenStartDrag', 'left');
+    await waitFor(() =>
+      expect(taskService.getTask).toHaveBeenCalledWith('workspace-1-Access pending', 'workspace-1'),
     );
   });
 

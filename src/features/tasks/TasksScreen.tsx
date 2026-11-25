@@ -10,8 +10,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-/* eslint-disable react-hooks/immutability */
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -20,13 +19,10 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
+import ReanimatedSwipeable, {
+  type SwipeableMethods,
+  SwipeDirection,
+} from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
@@ -46,6 +42,7 @@ import { getDueDateLabel } from '../home/dashboard-utils';
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
+  type TaskAccess,
   type TaskListItem,
   type TaskPage,
   type TaskPriority,
@@ -157,57 +154,28 @@ function TaskCard({
   task,
   onActions,
   watching,
-  open,
   onOpen,
   onClose,
   onWatch,
+  onAccessNeeded,
+  accessPending,
   watchKnown,
   watchLoading,
 }: {
   task: TaskListItem;
   onActions: (task: TaskListItem) => void;
   watching: boolean;
-  open: boolean;
-  onOpen: (taskId: string) => void;
+  onOpen: (taskId: string, methods: SwipeableMethods) => void;
   onClose: (taskId: string) => void;
   onWatch: (task: TaskListItem) => void;
+  onAccessNeeded: (task: TaskListItem) => void;
+  accessPending: boolean;
   watchKnown: boolean;
   watchLoading: boolean;
 }) {
   const { colors } = useAppTheme();
-  const revealWidth = getTaskSwipeRevealWidth(task.access);
-  const translateX = useSharedValue(open ? -revealWidth : 0);
-  const startX = useSharedValue(0);
-  useEffect(() => {
-    translateX.value = withSpring(open ? -revealWidth : 0, {
-      damping: 22,
-      stiffness: 260,
-    });
-  }, [open, revealWidth, translateX]);
-  const gesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetX([-16, 16])
-        .failOffsetY([-14, 14])
-        .onStart(() => {
-          startX.value = translateX.value;
-        })
-        .onUpdate((event) => {
-          translateX.value = Math.max(-revealWidth, Math.min(0, startX.value + event.translationX));
-        })
-        .onEnd((event) => {
-          const shouldOpen = event.velocityX < -300 || translateX.value < -(revealWidth * 0.45);
-          translateX.value = withSpring(shouldOpen ? -revealWidth : 0, {
-            damping: 22,
-            stiffness: 260,
-          });
-          runOnJS(shouldOpen ? onOpen : onClose)(task.id);
-        }),
-    [onClose, onOpen, revealWidth, startX, task.id, translateX],
-  );
-  const cardStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
+  const swipeableRef = useRef<SwipeableMethods | null>(null);
+  const revealWidth = accessPending ? 84 : getTaskSwipeRevealWidth(task.access);
   const dueLabel = getDueDateLabel(task.deadline, new Date(), task.status);
   const related = task.project?.name ?? task.team?.name ?? null;
   const assignees =
@@ -217,173 +185,202 @@ function TaskCard({
 
   return (
     <View style={{ minHeight: 112, overflow: 'hidden', borderRadius: themeTokens.radius.md }}>
-      <View
-        style={{
-          position: 'absolute',
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: revealWidth,
-          flexDirection: 'row',
-          backgroundColor: colors.surface,
-          borderRadius: themeTokens.radius.md,
-          overflow: 'hidden',
-        }}
-      >
-        {task.access?.canEdit ? (
-          <Pressable
-            accessibilityLabel={`Change status for ${task.title}`}
-            accessibilityRole="button"
-            onPress={() => onActions(task)}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              paddingHorizontal: 4,
-              backgroundColor: colors.primarySurface,
-            }}
-          >
-            <CircleDot color={colors.primaryAction} size={19} />
-            <AppText tone="link" variant="caption">
-              Status
-            </AppText>
-          </Pressable>
-        ) : null}
-        {task.access?.canEdit && !task.access.readOnly ? (
-          <Pressable
-            accessibilityLabel={`Edit ${task.title}`}
-            accessibilityRole="button"
-            onPress={() => router.push(`/task-edit/${encodeURIComponent(task.id)}`)}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              backgroundColor: colors.surfaceSubtle,
-            }}
-          >
-            <Pencil color={colors.text} size={18} />
-            <AppText variant="caption">Edit</AppText>
-          </Pressable>
-        ) : null}
-        {task.access?.canView ? (
-          <Pressable
-            accessibilityLabel={
-              watchKnown
-                ? `${watching ? 'Unwatch' : 'Watch'} ${task.title}`
-                : `Watch status unavailable for ${task.title}`
-            }
-            accessibilityRole="button"
-            disabled={!watchKnown || watchLoading}
-            onPress={() => {
-              if (watchKnown && !watchLoading) onWatch(task);
-            }}
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              backgroundColor: colors.primarySurface,
-            }}
-          >
-            {watchLoading ? (
-              <ActivityIndicator color={colors.primaryAction} size="small" />
-            ) : watching ? (
-              <EyeOff color={colors.primaryAction} size={18} />
-            ) : (
-              <Eye color={colors.primaryAction} size={18} />
-            )}
-            <AppText tone="link" variant="caption">
-              {watching ? 'Unwatch' : 'Watch'}
-            </AppText>
-          </Pressable>
-        ) : null}
-      </View>
-      <GestureDetector gesture={gesture}>
-        <Animated.View style={[{ flex: 1 }, cardStyle]}>
-          <AppCard
-            accessibilityLabel={`Open task ${task.title}`}
-            accessibilityActions={[
-              { name: 'activate', label: `Open task actions for ${task.title}` },
-            ]}
-            onAccessibilityAction={(event) => {
-              if (event.nativeEvent.actionName === 'activate') onActions(task);
-            }}
-            onLongPress={() => onActions(task)}
-            onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
-            padding="sm"
-            style={{
-              gap: themeTokens.spacing.xxs,
-              borderWidth: 0,
-              paddingVertical: themeTokens.spacing.sm,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: themeTokens.spacing.sm,
-              }}
-            >
-              <AppText numberOfLines={2} style={{ flex: 1 }} variant="label">
-                {task.title}
-              </AppText>
-              <StatusBadge status={task.status} />
-            </View>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: themeTokens.spacing.xs,
-                flexWrap: 'wrap',
-              }}
-            >
-              <PriorityBadge priority={task.priority} />
-              {dueLabel ? (
-                <AppText
-                  accessibilityLabel={`Due ${dueLabel}`}
-                  tone={dueLabel === 'Overdue' ? 'danger' : 'secondary'}
-                  variant="caption"
+      <ReanimatedSwipeable
+        ref={swipeableRef}
+        dragOffsetFromRight={16}
+        friction={1.2}
+        overshootRight={false}
+        renderRightActions={(_progress, _translation, methods) => {
+          swipeableRef.current = methods;
+          return (
+            <View style={{ width: revealWidth, flexDirection: 'row' }}>
+              {accessPending ? (
+                <View
+                  accessibilityLabel={`Checking actions for ${task.title}`}
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: colors.surfaceSubtle,
+                  }}
                 >
-                  {dueLabel}
-                </AppText>
-              ) : null}
-            </View>
-            <View
-              style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}
-            >
-              {assignees.length > 0 ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  {assignees.slice(0, 3).map((person, index) => (
-                    <View key={person.id} style={{ marginLeft: index === 0 ? 0 : -7 }}>
-                      <UserAvatar
-                        imageUrl={person.profilePictureUrl}
-                        name={assigneeName(person)}
-                        size={28}
-                      />
-                    </View>
-                  ))}
-                  {assignees.length > 3 ? (
-                    <AppText tone="secondary" variant="caption" style={{ marginLeft: 6 }}>
-                      +{assignees.length - 3}
-                    </AppText>
-                  ) : null}
+                  <ActivityIndicator color={colors.primaryAction} size="small" />
+                  <AppText variant="caption">Checking…</AppText>
                 </View>
-              ) : (
-                <AppText tone="secondary" variant="caption">
-                  Unassigned
-                </AppText>
-              )}
-              {related ? (
-                <AppText numberOfLines={1} style={{ flex: 1 }} tone="subtle" variant="caption">
-                  {related}
-                </AppText>
+              ) : null}
+              {task.access?.canEdit ? (
+                <Pressable
+                  accessibilityLabel={`Change status for ${task.title}`}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    methods.close();
+                    onActions(task);
+                  }}
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                    paddingHorizontal: 4,
+                    backgroundColor: colors.primarySurface,
+                  }}
+                >
+                  <CircleDot color={colors.primaryAction} size={19} />
+                  <AppText tone="link" variant="caption">
+                    Status
+                  </AppText>
+                </Pressable>
+              ) : null}
+              {task.access?.canEdit && !task.access.readOnly ? (
+                <Pressable
+                  accessibilityLabel={`Edit ${task.title}`}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    methods.close();
+                    router.push(`/task-edit/${encodeURIComponent(task.id)}`);
+                  }}
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                    backgroundColor: colors.surfaceSubtle,
+                  }}
+                >
+                  <Pencil color={colors.text} size={18} />
+                  <AppText variant="caption">Edit</AppText>
+                </Pressable>
+              ) : null}
+              {task.access?.canView ? (
+                <Pressable
+                  accessibilityLabel={
+                    watchKnown
+                      ? `${watching ? 'Unwatch' : 'Watch'} ${task.title}`
+                      : `Watch status unavailable for ${task.title}`
+                  }
+                  accessibilityRole="button"
+                  disabled={!watchKnown || watchLoading}
+                  onPress={() => {
+                    if (watchKnown && !watchLoading) {
+                      methods.close();
+                      onWatch(task);
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                    backgroundColor: colors.primarySurface,
+                  }}
+                >
+                  {watchLoading ? (
+                    <ActivityIndicator color={colors.primaryAction} size="small" />
+                  ) : watching ? (
+                    <EyeOff color={colors.primaryAction} size={18} />
+                  ) : (
+                    <Eye color={colors.primaryAction} size={18} />
+                  )}
+                  <AppText tone="link" variant="caption">
+                    {watching ? 'Unwatch' : 'Watch'}
+                  </AppText>
+                </Pressable>
               ) : null}
             </View>
-          </AppCard>
-        </Animated.View>
-      </GestureDetector>
+          );
+        }}
+        onSwipeableClose={(direction) => {
+          if (direction === SwipeDirection.LEFT) onClose(task.id);
+        }}
+        onSwipeableOpenStartDrag={() => {
+          if (!task.access) onAccessNeeded(task);
+        }}
+        onSwipeableOpen={(direction) => {
+          if (direction === SwipeDirection.LEFT && swipeableRef.current) {
+            onOpen(task.id, swipeableRef.current);
+          }
+        }}
+        testID={`task-swipeable-${task.id}`}
+      >
+        <AppCard
+          accessibilityLabel={`Open task ${task.title}`}
+          accessibilityActions={[
+            { name: 'activate', label: `Open task actions for ${task.title}` },
+          ]}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === 'activate') onActions(task);
+          }}
+          onLongPress={() => onActions(task)}
+          onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
+          padding="sm"
+          style={{
+            gap: themeTokens.spacing.xxs,
+            borderWidth: 0,
+            paddingVertical: themeTokens.spacing.sm,
+          }}
+        >
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              gap: themeTokens.spacing.sm,
+            }}
+          >
+            <AppText numberOfLines={2} style={{ flex: 1 }} variant="label">
+              {task.title}
+            </AppText>
+            <StatusBadge status={task.status} />
+          </View>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: themeTokens.spacing.xs,
+              flexWrap: 'wrap',
+            }}
+          >
+            <PriorityBadge priority={task.priority} />
+            {dueLabel ? (
+              <AppText
+                accessibilityLabel={`Due ${dueLabel}`}
+                tone={dueLabel === 'Overdue' ? 'danger' : 'secondary'}
+                variant="caption"
+              >
+                {dueLabel}
+              </AppText>
+            ) : null}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
+            {assignees.length > 0 ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {assignees.slice(0, 3).map((person, index) => (
+                  <View key={person.id} style={{ marginLeft: index === 0 ? 0 : -7 }}>
+                    <UserAvatar
+                      imageUrl={person.profilePictureUrl}
+                      name={assigneeName(person)}
+                      size={28}
+                    />
+                  </View>
+                ))}
+                {assignees.length > 3 ? (
+                  <AppText tone="secondary" variant="caption" style={{ marginLeft: 6 }}>
+                    +{assignees.length - 3}
+                  </AppText>
+                ) : null}
+              </View>
+            ) : (
+              <AppText tone="secondary" variant="caption">
+                Unassigned
+              </AppText>
+            )}
+            {related ? (
+              <AppText numberOfLines={1} style={{ flex: 1 }} tone="subtle" variant="caption">
+                {related}
+              </AppText>
+            ) : null}
+          </View>
+        </AppCard>
+      </ReanimatedSwipeable>
     </View>
   );
 }
@@ -405,11 +402,14 @@ function TasksScreenContent() {
   const [draftPriority, setDraftPriority] = useState<PriorityFilter>('');
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [actionTask, setActionTask] = useState<TaskListItem | null>(null);
-  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [, setOpenTaskId] = useState<string | null>(null);
   const [statusTask, setStatusTask] = useState<TaskListItem | null>(null);
   const [watchingTaskIds, setWatchingTaskIds] = useState<Set<string>>(new Set());
   const [watchStateByTask, setWatchStateByTask] = useState<Record<string, boolean | null>>({});
+  const [taskAccessById, setTaskAccessById] = useState<Record<string, TaskAccess>>({});
+  const [accessLoadingId, setAccessLoadingId] = useState<string | null>(null);
   const [watchLoadingId, setWatchLoadingId] = useState<string | null>(null);
+  const openSwipeable = useRef<{ taskId: string; methods: SwipeableMethods } | null>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [pageData, setPageData] = useState<ScopedTaskPage | null>(null);
@@ -580,6 +580,45 @@ function TasksScreenContent() {
       });
   };
 
+  const resolveTaskAccess = (task: TaskListItem) => {
+    if (task.access || taskAccessById[task.id] || !workspaceId || accessLoadingId === task.id)
+      return;
+    setAccessLoadingId(task.id);
+    void taskService
+      .getTask(task.id, workspaceId)
+      .then(({ access }) => {
+        setTaskAccessById((current) => ({ ...current, [task.id]: access }));
+        if (!access.canView || getTaskSwipeRevealWidth(access) === 0) {
+          openSwipeable.current?.methods.close();
+          handleSwipeClose(task.id);
+        }
+      })
+      .catch((accessError) => {
+        openSwipeable.current?.methods.close();
+        handleSwipeClose(task.id);
+        setError(requestErrorMessage(accessError));
+      })
+      .finally(() => setAccessLoadingId((current) => (current === task.id ? null : current)));
+  };
+
+  const closeOpenSwipeable = () => {
+    openSwipeable.current?.methods.close();
+    openSwipeable.current = null;
+    setOpenTaskId(null);
+  };
+
+  const handleSwipeOpen = (taskId: string, methods: SwipeableMethods) => {
+    if (openSwipeable.current?.taskId !== taskId) openSwipeable.current?.methods.close();
+    openSwipeable.current = { taskId, methods };
+    setOpenTaskId(taskId);
+    refreshWatchState(taskId);
+  };
+
+  const handleSwipeClose = (taskId: string) => {
+    if (openSwipeable.current?.taskId === taskId) openSwipeable.current = null;
+    setOpenTaskId((current) => (current === taskId ? null : current));
+  };
+
   if (!isReady) {
     return (
       <AppScreen>
@@ -652,7 +691,7 @@ function TasksScreenContent() {
                     accessibilityState={{ selected: activeRelation === view.value }}
                     key={view.value}
                     onPress={() => {
-                      setOpenTaskId(null);
+                      closeOpenSwipeable();
                       setRelation(view.value);
                     }}
                     style={{
@@ -696,7 +735,7 @@ function TasksScreenContent() {
                   autoCorrect={false}
                   maxLength={100}
                   onChangeText={(value) => {
-                    setOpenTaskId(null);
+                    closeOpenSwipeable();
                     setQuery(value);
                   }}
                   placeholder="Search tasks"
@@ -717,7 +756,7 @@ function TasksScreenContent() {
                     accessibilityLabel="Clear task search"
                     accessibilityRole="button"
                     onPress={() => {
-                      setOpenTaskId(null);
+                      closeOpenSwipeable();
                       setQuery('');
                     }}
                     style={{
@@ -859,31 +898,32 @@ function TasksScreenContent() {
             <RefreshControl
               colors={[colors.primaryAction]}
               onRefresh={() => {
-                setOpenTaskId(null);
+                closeOpenSwipeable();
                 setRetry((value) => value + 1);
               }}
               refreshing={loading && Boolean(currentPage)}
               tintColor={colors.primaryAction}
             />
           }
-          onScrollBeginDrag={() => setOpenTaskId(null)}
+          onScrollBeginDrag={closeOpenSwipeable}
           renderItem={({ item }) => (
             <TaskCard
-              task={item}
+              task={
+                item.access || !taskAccessById[item.id]
+                  ? item
+                  : { ...item, access: taskAccessById[item.id] }
+              }
+              accessPending={!item.access && !taskAccessById[item.id]}
               watching={watchingTaskIds.has(item.id)}
               watchKnown={
                 watchStateByTask[item.id] !== undefined && watchStateByTask[item.id] !== null
               }
               watchLoading={watchLoadingId === item.id}
-              open={openTaskId === item.id}
-              onClose={(taskId) =>
-                setOpenTaskId((current) => (current === taskId ? null : current))
-              }
-              onOpen={(taskId) => {
-                setOpenTaskId(taskId);
-                refreshWatchState(taskId);
-              }}
+              onClose={handleSwipeClose}
+              onOpen={handleSwipeOpen}
+              onAccessNeeded={resolveTaskAccess}
               onActions={(selected) => {
+                closeOpenSwipeable();
                 setOpenTaskId(selected.id);
                 setActionTask(selected);
                 refreshWatchState(selected.id);

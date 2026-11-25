@@ -3,6 +3,7 @@ import { type PropsWithChildren, useEffect, useState } from 'react';
 
 import { useAuth } from '../../auth/AuthProvider';
 import { AppButton, AppScreen, AppText, InlineError, LoadingState } from '../../components/ui';
+import { traceNavigation } from '../../navigation/devNavigationTrace';
 import { themeTokens } from '../../theme/tokens';
 
 export function getAuthenticatedRouteRedirect({
@@ -45,6 +46,13 @@ export function AuthenticatedRoute({
       activeWorkspace: Boolean(activeWorkspace),
       workspacePermissionStatus,
       redirectToHome,
+    });
+    traceNavigation({
+      event: 'authenticated-route-check',
+      destination,
+      status,
+      workspacePermissionStatus,
+      redirectReason: destination ? 'route-guard' : null,
     });
     if (destination) router.replace(destination as never);
   }, [status, workspaces.length, activeWorkspace, workspacePermissionStatus, redirectToHome]);

@@ -5,6 +5,7 @@ import { Pressable, View } from 'react-native';
 
 import { useAuth } from '../../auth/AuthProvider';
 import { useInboxCount } from '../../features/inbox/InboxCountProvider';
+import { traceNavigation } from '../../navigation/devNavigationTrace';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { AppText } from '../ui/AppText';
@@ -72,7 +73,10 @@ export function MainAppHeader({ onProfilePress }: { onProfilePress?: () => void 
                 : 'Open Inbox'
             }
             icon={<Bell color={colors.text} size={21} />}
-            onPress={() => router.push('/inbox')}
+            onPress={() => {
+              traceNavigation({ event: 'bell-pressed', destination: '/inbox' });
+              router.push('/inbox');
+            }}
           />
           {unreadCount && unreadCount > 0 ? (
             <View

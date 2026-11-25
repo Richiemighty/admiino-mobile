@@ -48,6 +48,39 @@ jest.mock('react-native-gesture-handler', () => {
     GestureDetector: ({ children }) => children,
   };
 });
+jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => {
+  const React = require('react');
+  const ReactNative = require('react-native');
+  const Swipeable = React.forwardRef((props, ref) => {
+    const methods = {
+      close: jest.fn(),
+      openLeft: jest.fn(),
+      openRight: jest.fn(),
+      reset: jest.fn(),
+    };
+    React.useImperativeHandle(ref, () => methods);
+    const actions = props.renderRightActions
+      ? props.renderRightActions({ value: 0 }, { value: 0 }, methods)
+      : null;
+    return React.createElement(
+      ReactNative.View,
+      {
+        testID: props.testID,
+        onSwipeableClose: props.onSwipeableClose,
+        onSwipeableOpen: props.onSwipeableOpen,
+        onSwipeableOpenStartDrag: props.onSwipeableOpenStartDrag,
+      },
+      actions,
+      props.children,
+    );
+  });
+  Swipeable.displayName = 'MockReanimatedSwipeable';
+  return {
+    __esModule: true,
+    default: Swipeable,
+    SwipeDirection: { LEFT: 'left', RIGHT: 'right' },
+  };
+});
 jest.mock('lucide-react-native', () => require('./mocks/lucide-react-native'));
 jest.mock(
   'react-native-safe-area-context',

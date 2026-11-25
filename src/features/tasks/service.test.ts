@@ -146,6 +146,43 @@ describe('P12 task API contracts', () => {
     expect(requests[1]?.url.searchParams.get('scope')).toBe('workspace');
   });
 
+  it('preserves validated list access but does not invent access when the list omits it', async () => {
+    const service = serviceFor((url) => ({
+      status: 'success',
+      total: 1,
+      data: {
+        tasks: [
+          url.pathname.endsWith('/tasks')
+            ? { ...task, access: { canView: true, canEdit: false, readOnly: true } }
+            : task,
+        ],
+      },
+    }));
+
+    await expect(
+      service.listTasks(workspaceId, { relation: 'assigned', page: 1 }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        tasks: [
+          expect.objectContaining({ access: { canView: true, canEdit: false, readOnly: true } }),
+        ],
+      }),
+    );
+
+    const withoutAccess = serviceFor(() => ({
+      status: 'success',
+      total: 1,
+      data: { tasks: [task] },
+    }));
+    await expect(
+      withoutAccess.listTasks(workspaceId, { relation: 'assigned', page: 1 }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        tasks: [expect.not.objectContaining({ access: expect.anything() })],
+      }),
+    );
+  });
+
   it('downloads files through the authenticated task route and refuses provider redirects', async () => {
     const requests: { url: URL; init: RequestInit }[] = [];
     const service = serviceFor(() => ({ status: 'success', data: {} }), requests);
