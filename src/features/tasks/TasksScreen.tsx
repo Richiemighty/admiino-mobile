@@ -12,7 +12,14 @@ import {
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 /* eslint-disable react-hooks/immutability */
-import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  TextInput,
+  View,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -154,6 +161,8 @@ function TaskCard({
   onOpen,
   onClose,
   onWatch,
+  watchKnown,
+  watchLoading,
 }: {
   task: TaskListItem;
   onActions: (task: TaskListItem) => void;
@@ -162,9 +171,11 @@ function TaskCard({
   onOpen: (taskId: string) => void;
   onClose: (taskId: string) => void;
   onWatch: (task: TaskListItem) => void;
+  watchKnown: boolean;
+  watchLoading: boolean;
 }) {
   const { colors } = useAppTheme();
-  const revealWidth = Math.max(1, getTaskSwipeRevealWidth(task.access));
+  const revealWidth = getTaskSwipeRevealWidth(task.access);
   const translateX = useSharedValue(open ? -revealWidth : 0);
   const startX = useSharedValue(0);
   useEffect(() => {
@@ -258,9 +269,16 @@ function TaskCard({
         ) : null}
         {task.access?.canView ? (
           <Pressable
-            accessibilityLabel={`${watching ? 'Unwatch' : 'Watch'} ${task.title}`}
+            accessibilityLabel={
+              watchKnown
+                ? `${watching ? 'Unwatch' : 'Watch'} ${task.title}`
+                : `Watch status unavailable for ${task.title}`
+            }
             accessibilityRole="button"
-            onPress={() => onWatch(task)}
+            disabled={!watchKnown || watchLoading}
+            onPress={() => {
+              if (watchKnown && !watchLoading) onWatch(task);
+            }}
             style={{
               flex: 1,
               alignItems: 'center',
@@ -269,7 +287,9 @@ function TaskCard({
               backgroundColor: colors.primarySurface,
             }}
           >
-            {watching ? (
+            {watchLoading ? (
+              <ActivityIndicator color={colors.primaryAction} size="small" />
+            ) : watching ? (
               <EyeOff color={colors.primaryAction} size={18} />
             ) : (
               <Eye color={colors.primaryAction} size={18} />
@@ -388,6 +408,7 @@ function TasksScreenContent() {
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [statusTask, setStatusTask] = useState<TaskListItem | null>(null);
   const [watchingTaskIds, setWatchingTaskIds] = useState<Set<string>>(new Set());
+  const [watchStateByTask, setWatchStateByTask] = useState<Record<string, boolean | null>>({});
   const [watchLoadingId, setWatchLoadingId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -536,6 +557,27 @@ function TasksScreenContent() {
     } finally {
       if (!controller.signal.aborted) setLoadingMore(false);
     }
+  };
+
+  const refreshWatchState = (taskId: string) => {
+    if (!workspaceId) return;
+    setWatchStateByTask((current) => ({ ...current, [taskId]: null }));
+    void taskService
+      .getWatchers(taskId, workspaceId)
+      .then((watchers) => {
+        const isWatching = watchers.some((watcher) => watcher.id === userId);
+        setWatchStateByTask((current) => ({ ...current, [taskId]: isWatching }));
+        setWatchingTaskIds((current) => {
+          const next = new Set(current);
+          if (isWatching) next.add(taskId);
+          else next.delete(taskId);
+          return next;
+        });
+      })
+      .catch(() => {
+        setWatchStateByTask((current) => ({ ...current, [taskId]: null }));
+        setError('The current watch state could not be confirmed. Try again.');
+      });
   };
 
   if (!isReady) {
@@ -829,42 +871,22 @@ function TasksScreenContent() {
             <TaskCard
               task={item}
               watching={watchingTaskIds.has(item.id)}
+              watchKnown={
+                watchStateByTask[item.id] !== undefined && watchStateByTask[item.id] !== null
+              }
+              watchLoading={watchLoadingId === item.id}
               open={openTaskId === item.id}
               onClose={(taskId) =>
                 setOpenTaskId((current) => (current === taskId ? null : current))
               }
               onOpen={(taskId) => {
                 setOpenTaskId(taskId);
-                if (!workspaceId) return;
-                void taskService
-                  .getWatchers(taskId, workspaceId)
-                  .then((watchers) => {
-                    setWatchingTaskIds((current) => {
-                      const next = new Set(current);
-                      if (watchers.some((watcher) => watcher.id === userId)) next.add(taskId);
-                      else next.delete(taskId);
-                      return next;
-                    });
-                  })
-                  .catch(() => undefined);
+                refreshWatchState(taskId);
               }}
               onActions={(selected) => {
                 setOpenTaskId(selected.id);
                 setActionTask(selected);
-                if (workspaceId) {
-                  void taskService
-                    .getWatchers(selected.id, workspaceId)
-                    .then((watchers) => {
-                      setWatchingTaskIds((current) => {
-                        const next = new Set(current);
-                        if (watchers.some((watcher) => watcher.id === userId))
-                          next.add(selected.id);
-                        else next.delete(selected.id);
-                        return next;
-                      });
-                    })
-                    .catch(() => undefined);
-                }
+                refreshWatchState(selected.id);
               }}
               onWatch={(selected) => {
                 if (!workspaceId) return;
@@ -880,6 +902,10 @@ function TasksScreenContent() {
                       else next.add(selected.id);
                       return next;
                     });
+                    setWatchStateByTask((current) => ({
+                      ...current,
+                      [selected.id]: !isWatching,
+                    }));
                     setOpenTaskId(null);
                   } catch (watchError) {
                     setError(
@@ -934,9 +960,15 @@ function TasksScreenContent() {
             {actionTask.access?.canView ? (
               <AppButton
                 accessibilityLabel={
-                  watchingTaskIds.has(actionTask.id) ? 'Unwatch task' : 'Watch task'
+                  watchStateByTask[actionTask.id] == null
+                    ? 'Watch state unavailable'
+                    : watchingTaskIds.has(actionTask.id)
+                      ? 'Unwatch task'
+                      : 'Watch task'
                 }
-                disabled={watchLoadingId === actionTask.id}
+                disabled={
+                  watchLoadingId === actionTask.id || watchStateByTask[actionTask.id] == null
+                }
                 loading={watchLoadingId === actionTask.id}
                 onPress={async () => {
                   if (!workspaceId) return;
@@ -954,6 +986,10 @@ function TasksScreenContent() {
                       await taskService.watchTask(actionTask.id, workspaceId);
                       setWatchingTaskIds((current) => new Set(current).add(actionTask.id));
                     }
+                    setWatchStateByTask((current) => ({
+                      ...current,
+                      [actionTask.id]: !isWatching,
+                    }));
                     setActionTask(null);
                     setOpenTaskId(null);
                   } catch (watchError) {

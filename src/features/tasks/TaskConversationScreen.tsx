@@ -528,7 +528,7 @@ export function TaskConversationScreen({
 
   const returnToTask = useCallback(() => {
     if (directFromInbox) {
-      router.replace('/(tabs)/inbox');
+      router.replace('/inbox');
       return;
     }
     if (router.canGoBack()) {

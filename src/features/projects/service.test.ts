@@ -260,6 +260,19 @@ describe('P13 project API contracts', () => {
     expect(requests).toHaveLength(2);
   });
 
+  it('downloads the exact authenticated project file ID requested by the viewer', async () => {
+    const requests: { url: URL; init: RequestInit }[] = [];
+    const service = serviceFor(() => ({ status: 'success', data: { file: 'content' } }), requests);
+
+    await service.downloadProjectFile('project-file-b', workspaceId);
+
+    expect(requests[0]?.url.pathname).toBe('/api/v1/drive/files/project-file-b/download');
+    expect(new Headers(requests[0]?.init.headers).get('x-company-id')).toBe(workspaceId);
+    expect(new Headers(requests[0]?.init.headers).get('Authorization')).toBe(
+      'Bearer secure-access-token',
+    );
+  });
+
   it('reads the project-creation governance capability', async () => {
     const requests: { url: URL; init: RequestInit }[] = [];
     const service = serviceFor(

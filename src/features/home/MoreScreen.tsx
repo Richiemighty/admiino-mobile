@@ -100,7 +100,7 @@ export function MoreScreen() {
               ['Teams', '/(tabs)/teams'],
               ['Projects', '/(tabs)/projects'],
               ['Calendar', '/(tabs)/calendar'],
-              ['Inbox', '/(tabs)/inbox'],
+              ['Inbox', '/inbox'],
             ].map(([label, path]) => (
               <AppButton
                 key={label}

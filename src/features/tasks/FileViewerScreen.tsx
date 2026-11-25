@@ -22,6 +22,7 @@ import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { projectService } from '../projects/service';
 import { isImageFile, isSupportedTaskFile, isTextFile, safeLocalFileName } from './fileContracts';
+import { type FileViewerCollectionItem, getNextFileViewerSelection } from './fileViewerNavigation';
 import { type TaskAttachmentRecord, taskService } from './service';
 
 interface LoadedFile {
@@ -33,13 +34,6 @@ interface LoadedFile {
   mimeType: string;
   size: number;
   projectFileId?: string;
-}
-
-interface FileCollectionItem {
-  id: string;
-  fileName: string;
-  fileType: string;
-  source?: string;
 }
 
 function nameFromDisposition(value: string | null): string | null {
@@ -104,18 +98,18 @@ export function FileViewerScreen({
 }) {
   const { activeWorkspace, status, workspacePermissionStatus, logout } = useAuth();
   const { colors } = useAppTheme();
-  const fileCollection = useMemo<FileCollectionItem[]>(() => {
+  const fileCollection = useMemo<FileViewerCollectionItem[]>(() => {
     if (!collection) return [];
     try {
       const parsed: unknown = JSON.parse(collection);
       return Array.isArray(parsed)
         ? parsed.filter(
-            (item): item is FileCollectionItem =>
+            (item): item is FileViewerCollectionItem =>
               Boolean(item) &&
               typeof item === 'object' &&
-              typeof (item as FileCollectionItem).id === 'string' &&
-              typeof (item as FileCollectionItem).fileName === 'string' &&
-              typeof (item as FileCollectionItem).fileType === 'string',
+              typeof (item as FileViewerCollectionItem).id === 'string' &&
+              typeof (item as FileViewerCollectionItem).fileName === 'string' &&
+              typeof (item as FileViewerCollectionItem).fileType === 'string',
           )
         : [];
     } catch {
@@ -169,7 +163,7 @@ export function FileViewerScreen({
 
   const fallbackToTask = () => {
     if (directFromInbox) {
-      router.replace('/(tabs)/inbox');
+      router.replace('/inbox');
       return;
     }
     if (projectFileId) {
@@ -192,14 +186,22 @@ export function FileViewerScreen({
 
   const navigateCollection = useCallback(
     (offset: number) => {
-      const next = fileCollection[collectionIndex + offset];
-      if (!next) return;
+      const selection = getNextFileViewerSelection(
+        fileCollection,
+        collectionIndex,
+        offset,
+        Boolean(projectFileId),
+      );
+      if (!selection) return;
+      const { item: next } = selection;
       router.replace({
         pathname: '/file-viewer',
         params: {
           taskId,
           attachmentId: next.id,
-          ...(projectFileId ? { projectFileId, projectId: projectId ?? '' } : {}),
+          ...(selection.projectFileId
+            ? { projectFileId: selection.projectFileId, projectId: projectId ?? '' }
+            : {}),
           fileName: next.fileName,
           fileType: next.fileType,
           source: next.source ?? '',

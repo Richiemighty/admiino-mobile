@@ -159,4 +159,44 @@ describe('Project details screen', () => {
     expect(screen.queryByText(project.name)).toBeNull();
     expect(mockListProjectTasks).not.toHaveBeenCalled();
   });
+
+  it('renders authorised project members', async () => {
+    mockGetProjectMembers.mockResolvedValueOnce([
+      {
+        id: 'user-2',
+        role: 'member',
+        status: 'active',
+        firstName: 'Grace',
+        lastName: 'Hopper',
+        email: 'grace@example.test',
+      },
+    ]);
+    const memberScreen = await renderWithProviders(
+      <ProjectDetailsScreen initialSection="members" projectId={project.id} />,
+    );
+    await memberScreen.findByText('Launch project');
+    fireEvent.press(memberScreen.getByRole('button', { name: 'Members' }));
+    expect(await memberScreen.findByText('Grace Hopper')).toBeTruthy();
+  });
+
+  it('distinguishes a project member permission denial', async () => {
+    mockGetProjectMembers.mockRejectedValueOnce(new ApiError('Forbidden', 403));
+    const deniedScreen = await renderWithProviders(
+      <ProjectDetailsScreen initialSection="members" projectId={project.id} />,
+    );
+    await deniedScreen.findByText('Launch project');
+    fireEvent.press(deniedScreen.getByRole('button', { name: 'Members' }));
+    expect(
+      await deniedScreen.findByText('You do not have permission to view members for this project.'),
+    ).toBeTruthy();
+  });
+
+  it('renders a successful empty member response as an empty state', async () => {
+    const screen = await renderWithProviders(
+      <ProjectDetailsScreen initialSection="members" projectId={project.id} />,
+    );
+    await screen.findByText('Launch project');
+    fireEvent.press(screen.getByRole('button', { name: 'Members' }));
+    expect(await screen.findByText('No active members are listed for this project.')).toBeTruthy();
+  });
 });

@@ -603,7 +603,7 @@ function ApprovalQueue({
           <InlineError message="You are not authorised to review workspace requests." />
           <AppButton
             accessibilityLabel="Back to Inbox"
-            onPress={() => router.replace('/(tabs)/inbox')}
+            onPress={() => router.replace('/inbox')}
             variant="outline"
           >
             Back to Inbox
@@ -640,7 +640,7 @@ function ApprovalQueue({
               <Pressable
                 accessibilityLabel="Back to Inbox"
                 accessibilityRole="button"
-                onPress={() => router.replace('/(tabs)/inbox')}
+                onPress={() => router.replace('/inbox')}
                 style={{
                   width: themeTokens.touchTarget.minimum,
                   height: themeTokens.touchTarget.minimum,

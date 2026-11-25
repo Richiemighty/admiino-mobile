@@ -194,7 +194,7 @@ export function NotificationSettingsScreen() {
             style: 'destructive',
             onPress: () => {
               if (router.canGoBack()) router.back();
-              else router.replace('/(tabs)/inbox');
+              else router.replace('/inbox');
             },
           },
         ],
@@ -202,7 +202,7 @@ export function NotificationSettingsScreen() {
       return;
     }
     if (router.canGoBack()) router.back();
-    else router.replace('/(tabs)/inbox');
+    else router.replace('/inbox');
   };
 
   if (loading && !preferences) {

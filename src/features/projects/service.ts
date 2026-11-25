@@ -57,6 +57,7 @@ export interface ProjectMember {
   firstName?: string | null;
   lastName?: string | null;
   email?: string | null;
+  profilePictureUrl?: string | null;
 }
 
 export interface ProjectTask {
@@ -230,7 +231,8 @@ function isProjectMember(value: unknown): value is ProjectMember {
     typeof value.status === 'string' &&
     isOptionalString(value.firstName) &&
     isOptionalString(value.lastName) &&
-    isOptionalString(value.email)
+    isOptionalString(value.email) &&
+    isOptionalString(value.profilePictureUrl)
   );
 }
 

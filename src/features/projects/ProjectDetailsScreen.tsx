@@ -182,8 +182,7 @@ export function ProjectDetailsScreen({
 }) {
   const { activeWorkspace, permissions, status, workspacePermissionStatus, logout } = useAuth();
   const { colors } = useAppTheme();
-  const returnToProjectList = () =>
-    router.replace(returnToInbox ? '/(tabs)/inbox' : '/(tabs)/projects');
+  const returnToProjectList = () => router.replace(returnToInbox ? '/inbox' : '/(tabs)/projects');
   const workspaceId = activeWorkspace?.companyId ?? null;
   const isReady =
     status === 'authenticated' &&
@@ -446,7 +445,7 @@ export function ProjectDetailsScreen({
             accessibilityLabel="Back to Projects"
             icon={<ArrowLeft color={colors.text} size={22} />}
             onPress={() => {
-              if (returnToInbox) router.replace('/(tabs)/inbox');
+              if (returnToInbox) router.replace('/inbox');
               else if (router.canGoBack()) router.back();
               else router.replace('/(tabs)/projects');
             }}
@@ -759,7 +758,11 @@ export function ProjectDetailsScreen({
                     borderWidth: 0,
                   }}
                 >
-                  <UserAvatar name={memberName(member)} size={38} />
+                  <UserAvatar
+                    imageUrl={member.profilePictureUrl}
+                    name={memberName(member)}
+                    size={38}
+                  />
                   <View style={{ flex: 1 }}>
                     <AppText variant="label">{memberName(member)}</AppText>
                     <AppText tone="secondary" variant="caption">

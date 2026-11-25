@@ -334,7 +334,7 @@ export function TaskDetailsScreen({
     canChangeStatus && permissions?.permissions.assign_workspace_members === true;
   const backToContext = () => {
     if (returnToInbox) {
-      router.replace('/(tabs)/inbox');
+      router.replace('/inbox');
     } else if (returnProjectId) {
       if (router.canGoBack()) router.back();
       else router.replace(`/projects/${encodeURIComponent(returnProjectId)}?tab=tasks`);
