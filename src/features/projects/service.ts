@@ -1,5 +1,5 @@
 import { apiClient, ApiError } from '../../api';
-import type { ApiClient } from '../../api/client';
+import type { ApiBinaryResponse, ApiClient } from '../../api/client';
 import type { SessionService } from '../../auth/session';
 import { sessionService } from '../../auth/session';
 import type { TaskTeamOption } from '../tasks/service';
@@ -76,6 +76,7 @@ export interface ProjectFile {
   fileType: string;
   fileSize?: number | null;
   createdAt?: string;
+  downloadUrl?: string | null;
 }
 
 export interface ProjectFolder {
@@ -242,7 +243,8 @@ function isProjectFile(value: unknown): value is ProjectFile {
     (value.fileSize === undefined ||
       value.fileSize === null ||
       typeof value.fileSize === 'number') &&
-    isOptionalString(value.createdAt)
+    isOptionalString(value.createdAt) &&
+    isOptionalString(value.downloadUrl)
   );
 }
 
@@ -415,6 +417,20 @@ export class ProjectService {
       folders: data.folders,
       files: data.files,
     };
+  }
+
+  async downloadProjectFile(
+    fileId: string,
+    workspaceId: string,
+    signal?: AbortSignal,
+  ): Promise<ApiBinaryResponse> {
+    if (!fileId || !workspaceId) throw new ApiError('The project file is unavailable.', 400);
+    const token = await this.sessions.getAccessToken();
+    return this.client.requestBinary(
+      `/drive/files/${encodeURIComponent(fileId)}/download`,
+      { token, workspaceId, signal, timeoutMs: 60000, redirect: 'error' },
+      20 * 1024 * 1024,
+    );
   }
 
   async getGovernanceCapabilities(

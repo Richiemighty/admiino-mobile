@@ -355,7 +355,7 @@ describe('P12 task lists, detail, and forms', () => {
     expect(screen.queryByText('Operations')).toBeNull();
     expect(screen.getByText('Confirm dates')).toBeTruthy();
     expect(screen.getByText('plan.pdf')).toBeTruthy();
-    expect(screen.getByText(/Status Changed/)).toBeTruthy();
+    expect(screen.queryByText(/Status Changed/)).toBeNull();
   });
 
   it('opens the conversation while preserving project and Inbox return context', async () => {

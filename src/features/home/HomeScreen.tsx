@@ -230,6 +230,7 @@ export function HomeScreen() {
             maxWidth: 720,
             alignSelf: 'center',
             gap: themeTokens.spacing.md,
+            paddingTop: themeTokens.spacing.md,
             paddingBottom: themeTokens.spacing.lg,
           }}
           refreshControl={

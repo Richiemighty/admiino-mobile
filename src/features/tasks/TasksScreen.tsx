@@ -1,15 +1,25 @@
 import { router, useFocusEffect } from 'expo-router';
-import { ChevronDown, ListTodo, Search, SlidersHorizontal, X } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
-  FlatList,
-  PanResponder,
-  Pressable,
-  RefreshControl,
-  TextInput,
-  View,
-} from 'react-native';
+  ChevronDown,
+  CircleDot,
+  Eye,
+  EyeOff,
+  ListTodo,
+  Pencil,
+  Search,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+/* eslint-disable react-hooks/immutability */
+import { FlatList, Pressable, RefreshControl, TextInput, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
@@ -36,6 +46,7 @@ import {
   taskService,
   type TaskStatus,
 } from './service';
+import { getTaskSwipeRevealWidth } from './taskSwipe';
 
 type StatusFilter = TaskStatus | '';
 type PriorityFilter = TaskPriority | '';
@@ -153,49 +164,39 @@ function TaskCard({
   onWatch: (task: TaskListItem) => void;
 }) {
   const { colors } = useAppTheme();
-  const visibleActions = useMemo(
-    () =>
-      [
-        task.access?.canEdit ? 'status' : null,
-        task.access?.canEdit && !task.access.readOnly ? 'edit' : null,
-        task.access?.canView ? 'watch' : null,
-      ].filter(Boolean),
-    [task.access],
-  );
-  const revealWidth = Math.max(1, visibleActions.length) * 84;
-  const [translateX] = useState(() => new Animated.Value(0));
+  const revealWidth = Math.max(1, getTaskSwipeRevealWidth(task.access));
+  const translateX = useSharedValue(open ? -revealWidth : 0);
+  const startX = useSharedValue(0);
   useEffect(() => {
-    Animated.spring(translateX, {
-      toValue: open ? -revealWidth : 0,
+    translateX.value = withSpring(open ? -revealWidth : 0, {
       damping: 22,
       stiffness: 260,
-      useNativeDriver: true,
-    }).start();
+    });
   }, [open, revealWidth, translateX]);
-  const responder = useMemo(
+  const gesture = useMemo(
     () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_event, gesture) =>
-          Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
-        onPanResponderMove: (_event, gesture) => {
-          const base = open ? -revealWidth : 0;
-          translateX.setValue(Math.max(-revealWidth, Math.min(0, base + gesture.dx)));
-        },
-        onPanResponderRelease: (_event, gesture) => {
-          if (gesture.dx < -45) onOpen(task.id);
-          else if (gesture.dx > 35) onClose(task.id);
-          else {
-            Animated.spring(translateX, {
-              toValue: open ? -revealWidth : 0,
-              damping: 22,
-              stiffness: 260,
-              useNativeDriver: true,
-            }).start();
-          }
-        },
-      }),
-    [open, onClose, onOpen, revealWidth, task.id, translateX],
+      Gesture.Pan()
+        .activeOffsetX([-16, 16])
+        .failOffsetY([-14, 14])
+        .onStart(() => {
+          startX.value = translateX.value;
+        })
+        .onUpdate((event) => {
+          translateX.value = Math.max(-revealWidth, Math.min(0, startX.value + event.translationX));
+        })
+        .onEnd((event) => {
+          const shouldOpen = event.velocityX < -300 || translateX.value < -(revealWidth * 0.45);
+          translateX.value = withSpring(shouldOpen ? -revealWidth : 0, {
+            damping: 22,
+            stiffness: 260,
+          });
+          runOnJS(shouldOpen ? onOpen : onClose)(task.id);
+        }),
+    [onClose, onOpen, revealWidth, startX, task.id, translateX],
   );
+  const cardStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
   const dueLabel = getDueDateLabel(task.deadline, new Date(), task.status);
   const related = task.project?.name ?? task.team?.name ?? null;
   const assignees =
@@ -213,7 +214,9 @@ function TaskCard({
           bottom: 0,
           width: revealWidth,
           flexDirection: 'row',
-          backgroundColor: colors.primaryAction,
+          backgroundColor: colors.surface,
+          borderRadius: themeTokens.radius.md,
+          overflow: 'hidden',
         }}
       >
         {task.access?.canEdit ? (
@@ -225,10 +228,13 @@ function TaskCard({
               flex: 1,
               alignItems: 'center',
               justifyContent: 'center',
+              gap: 4,
               paddingHorizontal: 4,
+              backgroundColor: colors.primarySurface,
             }}
           >
-            <AppText tone="inverse" variant="caption">
+            <CircleDot color={colors.primaryAction} size={19} />
+            <AppText tone="link" variant="caption">
               Status
             </AppText>
           </Pressable>
@@ -238,11 +244,16 @@ function TaskCard({
             accessibilityLabel={`Edit ${task.title}`}
             accessibilityRole="button"
             onPress={() => router.push(`/task-edit/${encodeURIComponent(task.id)}`)}
-            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              backgroundColor: colors.surfaceSubtle,
+            }}
           >
-            <AppText tone="inverse" variant="caption">
-              Edit
-            </AppText>
+            <Pencil color={colors.text} size={18} />
+            <AppText variant="caption">Edit</AppText>
           </Pressable>
         ) : null}
         {task.access?.canView ? (
@@ -250,96 +261,109 @@ function TaskCard({
             accessibilityLabel={`${watching ? 'Unwatch' : 'Watch'} ${task.title}`}
             accessibilityRole="button"
             onPress={() => onWatch(task)}
-            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              backgroundColor: colors.primarySurface,
+            }}
           >
-            <AppText tone="inverse" variant="caption">
+            {watching ? (
+              <EyeOff color={colors.primaryAction} size={18} />
+            ) : (
+              <Eye color={colors.primaryAction} size={18} />
+            )}
+            <AppText tone="link" variant="caption">
               {watching ? 'Unwatch' : 'Watch'}
             </AppText>
           </Pressable>
         ) : null}
       </View>
-      <Animated.View
-        {...responder.panHandlers}
-        style={{
-          flex: 1,
-          transform: [{ translateX }],
-        }}
-      >
-        <AppCard
-          accessibilityLabel={`Open task ${task.title}`}
-          accessibilityActions={[
-            { name: 'activate', label: `Open task actions for ${task.title}` },
-          ]}
-          onAccessibilityAction={(event) => {
-            if (event.nativeEvent.actionName === 'activate') onActions(task);
-          }}
-          onLongPress={() => onActions(task)}
-          onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
-          padding="sm"
-          style={{
-            gap: themeTokens.spacing.xxs,
-            borderWidth: 0,
-            paddingVertical: themeTokens.spacing.sm,
-          }}
-        >
-          <View
-            style={{ flexDirection: 'row', alignItems: 'flex-start', gap: themeTokens.spacing.sm }}
-          >
-            <AppText numberOfLines={2} style={{ flex: 1 }} variant="label">
-              {task.title}
-            </AppText>
-            <StatusBadge status={task.status} />
-          </View>
-          <View
+      <GestureDetector gesture={gesture}>
+        <Animated.View style={[{ flex: 1 }, cardStyle]}>
+          <AppCard
+            accessibilityLabel={`Open task ${task.title}`}
+            accessibilityActions={[
+              { name: 'activate', label: `Open task actions for ${task.title}` },
+            ]}
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === 'activate') onActions(task);
+            }}
+            onLongPress={() => onActions(task)}
+            onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
+            padding="sm"
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: themeTokens.spacing.xs,
-              flexWrap: 'wrap',
+              gap: themeTokens.spacing.xxs,
+              borderWidth: 0,
+              paddingVertical: themeTokens.spacing.sm,
             }}
           >
-            <PriorityBadge priority={task.priority} />
-            {dueLabel ? (
-              <AppText
-                accessibilityLabel={`Due ${dueLabel}`}
-                tone={dueLabel === 'Overdue' ? 'danger' : 'secondary'}
-                variant="caption"
-              >
-                {dueLabel}
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: themeTokens.spacing.sm,
+              }}
+            >
+              <AppText numberOfLines={2} style={{ flex: 1 }} variant="label">
+                {task.title}
               </AppText>
-            ) : null}
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}>
-            {assignees.length > 0 ? (
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {assignees.slice(0, 3).map((person, index) => (
-                  <View key={person.id} style={{ marginLeft: index === 0 ? 0 : -7 }}>
-                    <UserAvatar
-                      imageUrl={person.profilePictureUrl}
-                      name={assigneeName(person)}
-                      size={28}
-                    />
-                  </View>
-                ))}
-                {assignees.length > 3 ? (
-                  <AppText tone="secondary" variant="caption" style={{ marginLeft: 6 }}>
-                    +{assignees.length - 3}
-                  </AppText>
-                ) : null}
-              </View>
-            ) : (
-              <AppText tone="secondary" variant="caption">
-                Unassigned
-              </AppText>
-            )}
-            {related ? (
-              <AppText numberOfLines={1} style={{ flex: 1 }} tone="subtle" variant="caption">
-                {related}
-              </AppText>
-            ) : null}
-          </View>
-        </AppCard>
-      </Animated.View>
+              <StatusBadge status={task.status} />
+            </View>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: themeTokens.spacing.xs,
+                flexWrap: 'wrap',
+              }}
+            >
+              <PriorityBadge priority={task.priority} />
+              {dueLabel ? (
+                <AppText
+                  accessibilityLabel={`Due ${dueLabel}`}
+                  tone={dueLabel === 'Overdue' ? 'danger' : 'secondary'}
+                  variant="caption"
+                >
+                  {dueLabel}
+                </AppText>
+              ) : null}
+            </View>
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}
+            >
+              {assignees.length > 0 ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {assignees.slice(0, 3).map((person, index) => (
+                    <View key={person.id} style={{ marginLeft: index === 0 ? 0 : -7 }}>
+                      <UserAvatar
+                        imageUrl={person.profilePictureUrl}
+                        name={assigneeName(person)}
+                        size={28}
+                      />
+                    </View>
+                  ))}
+                  {assignees.length > 3 ? (
+                    <AppText tone="secondary" variant="caption" style={{ marginLeft: 6 }}>
+                      +{assignees.length - 3}
+                    </AppText>
+                  ) : null}
+                </View>
+              ) : (
+                <AppText tone="secondary" variant="caption">
+                  Unassigned
+                </AppText>
+              )}
+              {related ? (
+                <AppText numberOfLines={1} style={{ flex: 1 }} tone="subtle" variant="caption">
+                  {related}
+                </AppText>
+              ) : null}
+            </View>
+          </AppCard>
+        </Animated.View>
+      </GestureDetector>
     </View>
   );
 }
@@ -585,7 +609,10 @@ function TasksScreenContent() {
                     accessibilityRole="button"
                     accessibilityState={{ selected: activeRelation === view.value }}
                     key={view.value}
-                    onPress={() => setRelation(view.value)}
+                    onPress={() => {
+                      setOpenTaskId(null);
+                      setRelation(view.value);
+                    }}
                     style={{
                       flex: 1,
                       minHeight: 40,
@@ -626,7 +653,10 @@ function TasksScreenContent() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   maxLength={100}
-                  onChangeText={setQuery}
+                  onChangeText={(value) => {
+                    setOpenTaskId(null);
+                    setQuery(value);
+                  }}
                   placeholder="Search tasks"
                   placeholderTextColor={colors.textMuted}
                   returnKeyType="search"
@@ -644,7 +674,10 @@ function TasksScreenContent() {
                   <Pressable
                     accessibilityLabel="Clear task search"
                     accessibilityRole="button"
-                    onPress={() => setQuery('')}
+                    onPress={() => {
+                      setOpenTaskId(null);
+                      setQuery('');
+                    }}
                     style={{
                       minWidth: 42,
                       minHeight: 42,
@@ -783,11 +816,15 @@ function TasksScreenContent() {
           refreshControl={
             <RefreshControl
               colors={[colors.primaryAction]}
-              onRefresh={() => setRetry((value) => value + 1)}
+              onRefresh={() => {
+                setOpenTaskId(null);
+                setRetry((value) => value + 1);
+              }}
               refreshing={loading && Boolean(currentPage)}
               tintColor={colors.primaryAction}
             />
           }
+          onScrollBeginDrag={() => setOpenTaskId(null)}
           renderItem={({ item }) => (
             <TaskCard
               task={item}
@@ -1021,6 +1058,7 @@ function TasksScreenContent() {
               onPress={() => {
                 setStatusFilter(draftStatus);
                 setPriorityFilter(draftPriority);
+                setOpenTaskId(null);
                 setFiltersVisible(false);
               }}
               style={{ flex: 1 }}

@@ -2,9 +2,11 @@ import { randomUUID } from 'expo-crypto';
 import { File, Paths } from 'expo-file-system';
 import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { ArrowLeft, Download, FileText } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Download, FileText } from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
@@ -18,8 +20,9 @@ import {
 } from '../../components/ui';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
+import { projectService } from '../projects/service';
 import { isImageFile, isSupportedTaskFile, isTextFile, safeLocalFileName } from './fileContracts';
-import { taskService } from './service';
+import { type TaskAttachmentRecord, taskService } from './service';
 
 interface LoadedFile {
   workspaceId: string;
@@ -29,6 +32,14 @@ interface LoadedFile {
   fileName: string;
   mimeType: string;
   size: number;
+  projectFileId?: string;
+}
+
+interface FileCollectionItem {
+  id: string;
+  fileName: string;
+  fileType: string;
+  source?: string;
 }
 
 function nameFromDisposition(value: string | null): string | null {
@@ -75,6 +86,9 @@ export function FileViewerScreen({
   returnProjectId,
   returnToInbox = false,
   directFromInbox = false,
+  collection,
+  projectFileId,
+  projectId,
 }: {
   taskId: string;
   attachmentId: string;
@@ -84,15 +98,38 @@ export function FileViewerScreen({
   returnProjectId?: string;
   returnToInbox?: boolean;
   directFromInbox?: boolean;
+  collection?: string;
+  projectFileId?: string;
+  projectId?: string;
 }) {
   const { activeWorkspace, status, workspacePermissionStatus, logout } = useAuth();
   const { colors } = useAppTheme();
+  const fileCollection = useMemo<FileCollectionItem[]>(() => {
+    if (!collection) return [];
+    try {
+      const parsed: unknown = JSON.parse(collection);
+      return Array.isArray(parsed)
+        ? parsed.filter(
+            (item): item is FileCollectionItem =>
+              Boolean(item) &&
+              typeof item === 'object' &&
+              typeof (item as FileCollectionItem).id === 'string' &&
+              typeof (item as FileCollectionItem).fileName === 'string' &&
+              typeof (item as FileCollectionItem).fileType === 'string',
+          )
+        : [];
+    } catch {
+      return [];
+    }
+  }, [collection]);
+  const collectionIndex = fileCollection.findIndex((item) => item.id === attachmentId);
+  const collectionPosition = collectionIndex >= 0 ? collectionIndex + 1 : 1;
   const workspaceId = activeWorkspace?.companyId ?? null;
   const isReady =
     status === 'authenticated' &&
     workspacePermissionStatus === 'ready' &&
-    Boolean(workspaceId && taskId && attachmentId);
-  const requestKey = `${workspaceId ?? ''}:${taskId}:${attachmentId}`;
+    Boolean(workspaceId && attachmentId && (taskId || projectFileId));
+  const requestKey = `${workspaceId ?? ''}:${taskId}:${projectFileId ?? ''}:${attachmentId}`;
   const [loaded, setLoaded] = useState<LoadedFile | null>(null);
   const [textPreview, setTextPreview] = useState<{
     workspaceId: string;
@@ -117,6 +154,7 @@ export function FileViewerScreen({
   const currentLoaded =
     loaded?.workspaceId === workspaceId &&
     loaded.taskId === taskId &&
+    loaded.projectFileId === projectFileId &&
     loaded.attachmentId === attachmentId &&
     loaded.file.exists
       ? loaded
@@ -134,6 +172,10 @@ export function FileViewerScreen({
       router.replace('/(tabs)/inbox');
       return;
     }
+    if (projectFileId) {
+      router.replace({ pathname: '/projects/[id]', params: { id: projectId ?? '' } });
+      return;
+    }
     if (router.canGoBack()) {
       router.back();
       return;
@@ -148,8 +190,50 @@ export function FileViewerScreen({
     });
   };
 
+  const navigateCollection = useCallback(
+    (offset: number) => {
+      const next = fileCollection[collectionIndex + offset];
+      if (!next) return;
+      router.replace({
+        pathname: '/file-viewer',
+        params: {
+          taskId,
+          attachmentId: next.id,
+          ...(projectFileId ? { projectFileId, projectId: projectId ?? '' } : {}),
+          fileName: next.fileName,
+          fileType: next.fileType,
+          source: next.source ?? '',
+          ...(collection ? { collection } : {}),
+          ...(returnProjectId ? { projectId: returnProjectId, fromProject: '1' } : {}),
+          ...(returnToInbox ? { returnTo: 'inbox' } : {}),
+        },
+      });
+    },
+    [
+      collection,
+      collectionIndex,
+      fileCollection,
+      projectFileId,
+      projectId,
+      returnProjectId,
+      returnToInbox,
+      taskId,
+    ],
+  );
+  const galleryGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX([-24, 24])
+        .failOffsetY([-30, 30])
+        .onEnd((event) => {
+          if (Math.abs(event.translationX) < 40 || fileCollection.length < 2) return;
+          runOnJS(navigateCollection)(event.translationX < 0 ? 1 : -1);
+        }),
+    [fileCollection.length, navigateCollection],
+  );
+
   useEffect(() => {
-    if (!isReady || !workspaceId || !taskId || !attachmentId) {
+    if (!isReady || !workspaceId || !attachmentId) {
       return undefined;
     }
 
@@ -161,39 +245,45 @@ export function FileViewerScreen({
 
     void (async () => {
       try {
-        if (sourceHint === 'google-drive') {
+        if (!projectFileId && sourceHint === 'google-drive') {
           throw new ApiError(
             'This Google Drive attachment cannot be opened securely in the mobile app.',
             501,
           );
         }
 
-        const details = await taskService.getTask(taskId, workspaceId, controller.signal);
-        const taskAttachment = details.task.attachments?.find(
-          (attachment) => attachment.id === attachmentId,
-        );
-        if (taskAttachment?.source === 'google-drive') {
-          throw new ApiError(
-            'This Google Drive attachment cannot be opened securely in the mobile app.',
-            501,
+        let taskAttachment: TaskAttachmentRecord | undefined;
+        let resolvedName = fileNameHint ?? 'Task attachment';
+        let hintedType = fileTypeHint ?? '';
+        if (projectFileId) {
+          resolvedName = fileNameHint ?? 'Project file';
+        } else {
+          const details = await taskService.getTask(taskId, workspaceId, controller.signal);
+          taskAttachment = details.task.attachments?.find(
+            (attachment) => attachment.id === attachmentId,
           );
+          if (taskAttachment?.source === 'google-drive') {
+            throw new ApiError(
+              'This Google Drive attachment cannot be opened securely in the mobile app.',
+              501,
+            );
+          }
+          resolvedName = taskAttachment?.fileName ?? taskAttachment?.name ?? resolvedName;
+          hintedType = taskAttachment?.mimeType ?? taskAttachment?.fileType ?? hintedType;
         }
-
-        const resolvedName =
-          taskAttachment?.fileName ?? taskAttachment?.name ?? fileNameHint ?? 'Task attachment';
-        const hintedType =
-          taskAttachment?.mimeType ?? taskAttachment?.fileType ?? fileTypeHint ?? '';
         if (!isSupportedTaskFile(resolvedName, hintedType)) {
           throw new ApiError('This attachment type is not supported in the mobile app.', 415);
         }
 
-        const downloaded = await taskService.downloadAttachment(
-          taskId,
-          attachmentId,
-          workspaceId,
-          taskAttachment?.source ?? sourceHint,
-          controller.signal,
-        );
+        const downloaded = projectFileId
+          ? await projectService.downloadProjectFile(projectFileId, workspaceId, controller.signal)
+          : await taskService.downloadAttachment(
+              taskId,
+              attachmentId,
+              workspaceId,
+              taskAttachment?.source ?? sourceHint,
+              controller.signal,
+            );
         if (!active || controller.signal.aborted) return;
 
         const headerType = downloaded.contentType?.split(';', 1)[0].trim().toLowerCase() ?? '';
@@ -220,6 +310,7 @@ export function FileViewerScreen({
           fileName: finalName,
           mimeType,
           size: downloaded.bytes.byteLength,
+          ...(projectFileId ? { projectFileId } : {}),
         };
         loadedRef.current = nextLoaded;
         setLoaded(nextLoaded);
@@ -263,6 +354,7 @@ export function FileViewerScreen({
     fileTypeHint,
     isReady,
     logout,
+    projectFileId,
     requestKey,
     sourceHint,
     taskId,
@@ -400,6 +492,43 @@ export function FileViewerScreen({
           </AppText>
         </View>
 
+        {fileCollection.length > 1 && (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: themeTokens.spacing.sm,
+            }}
+          >
+            <AppButton
+              accessibilityLabel="Previous file"
+              disabled={collectionIndex <= 0}
+              icon={<ChevronLeft color={colors.primaryAction} size={18} />}
+              onPress={() => navigateCollection(-1)}
+              variant="outline"
+            >
+              Previous
+            </AppButton>
+            <AppText
+              accessibilityLabel={`File ${collectionPosition} of ${fileCollection.length}`}
+              tone="secondary"
+              variant="caption"
+            >
+              {collectionPosition} of {fileCollection.length}
+            </AppText>
+            <AppButton
+              accessibilityLabel="Next file"
+              disabled={collectionIndex < 0 || collectionIndex >= fileCollection.length - 1}
+              icon={<ChevronRight color={colors.primaryAction} size={18} />}
+              onPress={() => navigateCollection(1)}
+              variant="outline"
+            >
+              Next
+            </AppButton>
+          </View>
+        )}
+
         {loading && <LoadingState label="Downloading authorized file" />}
         {error && <InlineError message={error} />}
 
@@ -420,24 +549,26 @@ export function FileViewerScreen({
             </View>
 
             {isImageFile(currentLoaded.fileName, currentLoaded.mimeType) && (
-              <View
-                style={{
-                  flex: 1,
-                  minHeight: 240,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: themeTokens.radius.md,
-                  backgroundColor: colors.surfaceSubtle,
-                  overflow: 'hidden',
-                }}
-              >
-                <Image
-                  accessibilityLabel={currentLoaded.fileName}
-                  resizeMode="contain"
-                  source={{ uri: currentLoaded.file.uri }}
-                  style={{ width: '100%', height: '100%' }}
-                />
-              </View>
+              <GestureDetector gesture={galleryGesture}>
+                <View
+                  style={{
+                    flex: 1,
+                    minHeight: 240,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: themeTokens.radius.md,
+                    backgroundColor: colors.surfaceSubtle,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <Image
+                    accessibilityLabel={currentLoaded.fileName}
+                    resizeMode="contain"
+                    source={{ uri: currentLoaded.file.uri }}
+                    style={{ width: '100%', height: '100%' }}
+                  />
+                </View>
+              </GestureDetector>
             )}
 
             {isTextFile(currentLoaded.fileName, currentLoaded.mimeType) &&

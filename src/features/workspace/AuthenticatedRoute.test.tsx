@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useAuth } from '../../auth/AuthProvider';
 import { AppText } from '../../components/ui';
 import { renderWithProviders } from '../../test/render';
-import { AuthenticatedRoute } from './AuthenticatedRoute';
+import { AuthenticatedRoute, getAuthenticatedRouteRedirect } from './AuthenticatedRoute';
 
 jest.mock('../../auth/AuthProvider', () => ({ useAuth: jest.fn() }));
 
@@ -90,5 +90,17 @@ describe('P10 authenticated routing', () => {
     } as never);
     await renderWithProviders(<AuthenticatedRoute />);
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/workspace-access'));
+  });
+
+  it('does not redirect a ready Inbox destination to workspace selection', () => {
+    expect(
+      getAuthenticatedRouteRedirect({
+        status: 'authenticated',
+        workspaceCount: 1,
+        activeWorkspace: true,
+        workspacePermissionStatus: 'ready',
+        redirectToHome: false,
+      }),
+    ).toBeNull();
   });
 });

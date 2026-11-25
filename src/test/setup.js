@@ -12,7 +12,42 @@ jest.mock('@react-native-async-storage/async-storage', () => require('./mocks/as
 jest.mock('expo-secure-store', () => require('./mocks/expo-secure-store'), {
   virtual: true,
 });
-jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
+jest.mock('react-native-reanimated', () => {
+  const ReactNative = require('react-native');
+  const Animated = {
+    View: ReactNative.View,
+    Text: ReactNative.Text,
+    ScrollView: ReactNative.ScrollView,
+    createAnimatedComponent: (component) => component,
+  };
+  return {
+    __esModule: true,
+    default: Animated,
+    Animated,
+    runOnJS: (callback) => callback,
+    useAnimatedStyle: (factory) => factory(),
+    useSharedValue: (initialValue) => ({ value: initialValue }),
+    withSpring: (value) => value,
+    withTiming: (value) => value,
+    cancelAnimation: jest.fn(),
+    Easing: { linear: jest.fn() },
+  };
+});
+jest.mock('react-native-gesture-handler', () => {
+  const actual = jest.requireActual('react-native-gesture-handler');
+  const createGesture = () => {
+    const gesture = {};
+    for (const method of ['activeOffsetX', 'failOffsetY', 'onStart', 'onUpdate', 'onEnd']) {
+      gesture[method] = () => gesture;
+    }
+    return gesture;
+  };
+  return {
+    ...actual,
+    Gesture: { Pan: createGesture },
+    GestureDetector: ({ children }) => children,
+  };
+});
 jest.mock('lucide-react-native', () => require('./mocks/lucide-react-native'));
 jest.mock(
   'react-native-safe-area-context',

@@ -140,6 +140,7 @@ export interface TaskMemberOption {
   userId: string;
   firstName: string;
   lastName: string;
+  profilePictureUrl?: string | null;
 }
 
 export interface TaskProjectOption {
@@ -660,6 +661,9 @@ export class TaskService {
           isRecord(member.user) &&
           typeof member.user.firstName === 'string' &&
           typeof member.user.lastName === 'string' &&
+          (member.user.profilePictureUrl === undefined ||
+            member.user.profilePictureUrl === null ||
+            typeof member.user.profilePictureUrl === 'string') &&
           (member.user.isActive === undefined || typeof member.user.isActive === 'boolean'),
       )
     ) {
@@ -671,6 +675,9 @@ export class TaskService {
         userId: member.userId as string,
         firstName: member.user.firstName as string,
         lastName: member.user.lastName as string,
+        ...(typeof member.user.profilePictureUrl === 'string'
+          ? { profilePictureUrl: member.user.profilePictureUrl }
+          : {}),
       }));
   }
 

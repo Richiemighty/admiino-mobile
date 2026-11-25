@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   CalendarDays,
   ChevronRight,
-  FileText,
   Folder,
   FolderKanban,
   Plus,
@@ -25,6 +24,7 @@ import {
 } from '../../components/ui';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
+import { SecureImagePreview } from '../files/SecureImagePreview';
 import { canCreateProjectTasks, canEditProject } from './permissions';
 import {
   type ProjectFileListing,
@@ -124,6 +124,51 @@ function taskAssignee(task: ProjectTask): string | null {
   return assignee
     ? [assignee.firstName, assignee.lastName].filter(Boolean).join(' ').trim() || 'Assigned'
     : null;
+}
+
+function ProjectFileCard({
+  file,
+  workspaceId,
+  projectId,
+  collection,
+}: {
+  file: ProjectFileListing['files'][number];
+  workspaceId: string;
+  projectId: string;
+  collection: string;
+}) {
+  const download = useCallback(
+    () => projectService.downloadProjectFile(file.id, workspaceId),
+    [file.id, workspaceId],
+  );
+  return (
+    <AppCard
+      accessibilityLabel={`Open project file ${file.fileName}`}
+      onPress={() =>
+        router.push({
+          pathname: '/file-viewer',
+          params: {
+            taskId: '',
+            attachmentId: file.id,
+            projectFileId: file.id,
+            projectId,
+            fileName: file.fileName,
+            fileType: file.fileType,
+            collection,
+          },
+        })
+      }
+      padding="sm"
+      style={{ width: '48%', minHeight: 150, gap: themeTokens.spacing.sm, borderWidth: 0 }}
+    >
+      <SecureImagePreview
+        download={download}
+        fileName={file.fileName}
+        mimeType={file.fileType}
+        size={file.fileSize}
+      />
+    </AppCard>
+  );
 }
 
 export function ProjectDetailsScreen({
@@ -800,35 +845,19 @@ export function ProjectDetailsScreen({
                   style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.sm }}
                 >
                   {fileListing.files.map((file) => (
-                    <AppCard
+                    <ProjectFileCard
+                      collection={JSON.stringify(
+                        fileListing.files.map((item) => ({
+                          id: item.id,
+                          fileName: item.fileName,
+                          fileType: item.fileType,
+                        })),
+                      )}
+                      file={file}
                       key={file.id}
-                      padding="sm"
-                      style={{
-                        width: '48%',
-                        minHeight: 124,
-                        gap: themeTokens.spacing.sm,
-                        borderWidth: 0,
-                      }}
-                    >
-                      <View
-                        style={{
-                          height: 56,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderRadius: themeTokens.radius.sm,
-                          backgroundColor: colors.surfaceSubtle,
-                        }}
-                      >
-                        <FileText color={colors.primaryAction} size={28} />
-                      </View>
-                      <AppText numberOfLines={2} variant="label">
-                        {file.fileName}
-                      </AppText>
-                      <AppText numberOfLines={1} tone="secondary" variant="caption">
-                        {file.fileType}
-                        {file.fileSize ? ` · ${Math.ceil(file.fileSize / 1024)} KB` : ''}
-                      </AppText>
-                    </AppCard>
+                      projectId={project.id}
+                      workspaceId={workspaceId ?? ''}
+                    />
                   ))}
                 </View>
                 {!fileListing.files.length && !fileListing.folders.length && (

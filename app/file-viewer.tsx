@@ -15,6 +15,8 @@ export default function FileViewerRoute() {
     fromProject,
     returnTo,
     fromInbox,
+    collection,
+    projectFileId,
   } = useLocalSearchParams<{
     taskId: string;
     attachmentId: string;
@@ -25,6 +27,8 @@ export default function FileViewerRoute() {
     fromProject?: string;
     returnTo?: string;
     fromInbox?: string;
+    collection?: string;
+    projectFileId?: string;
   }>();
   const value = (parameter: string | string[] | undefined) =>
     Array.isArray(parameter) ? parameter[0] : parameter;
@@ -32,6 +36,9 @@ export default function FileViewerRoute() {
   return (
     <FileViewerScreen
       attachmentId={value(attachmentId) ?? ''}
+      collection={value(collection)}
+      projectFileId={value(projectFileId)}
+      projectId={value(projectId)}
       key={`${user?.id ?? ''}:${activeWorkspace?.companyId ?? ''}:${value(taskId) ?? ''}:${value(attachmentId) ?? ''}`}
       directFromInbox={value(fromInbox) === '1'}
       fileNameHint={value(fileName)}

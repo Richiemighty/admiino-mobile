@@ -5,6 +5,32 @@ import { useAuth } from '../../auth/AuthProvider';
 import { AppButton, AppScreen, AppText, InlineError, LoadingState } from '../../components/ui';
 import { themeTokens } from '../../theme/tokens';
 
+export function getAuthenticatedRouteRedirect({
+  status,
+  workspaceCount,
+  activeWorkspace,
+  workspacePermissionStatus,
+  redirectToHome,
+}: {
+  status: string;
+  workspaceCount: number;
+  activeWorkspace: boolean;
+  workspacePermissionStatus: string;
+  redirectToHome: boolean;
+}): string | null {
+  if (status === 'restoring') return null;
+  if (status === 'signed-out') return '/sign-in';
+  if (status !== 'authenticated') return null;
+  if (workspacePermissionStatus === 'suspended' && activeWorkspace) return '/workspace-suspended';
+  if (workspacePermissionStatus === 'error') return '/workspace-access';
+  if (workspaceCount === 0 && workspacePermissionStatus !== 'loading') return '/workspace-setup';
+  if (activeWorkspace && workspacePermissionStatus === 'ready') {
+    return redirectToHome ? '/(tabs)' : null;
+  }
+  if (workspaceCount > 0 || workspacePermissionStatus === 'loading') return '/workspace-select';
+  return null;
+}
+
 export function AuthenticatedRoute({
   children,
   redirectToHome = true,
@@ -13,31 +39,14 @@ export function AuthenticatedRoute({
   const [signOutError, setSignOutError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (status === 'restoring') return;
-    if (status === 'signed-out') {
-      router.replace('/sign-in');
-      return;
-    }
-    if (status !== 'authenticated') return;
-    if (workspacePermissionStatus === 'suspended' && activeWorkspace) {
-      router.replace('/workspace-suspended');
-      return;
-    }
-    if (workspacePermissionStatus === 'error') {
-      router.replace('/workspace-access');
-      return;
-    }
-    if (workspaces.length === 0 && workspacePermissionStatus !== 'loading') {
-      router.replace('/workspace-setup');
-      return;
-    }
-    if (activeWorkspace && workspacePermissionStatus === 'ready' && redirectToHome) {
-      router.replace('/(tabs)');
-      return;
-    }
-    if (workspaces.length > 0 || workspacePermissionStatus === 'loading') {
-      router.replace('/workspace-select');
-    }
+    const destination = getAuthenticatedRouteRedirect({
+      status,
+      workspaceCount: workspaces.length,
+      activeWorkspace: Boolean(activeWorkspace),
+      workspacePermissionStatus,
+      redirectToHome,
+    });
+    if (destination) router.replace(destination as never);
   }, [status, workspaces.length, activeWorkspace, workspacePermissionStatus, redirectToHome]);
 
   if (status === 'restoring') {

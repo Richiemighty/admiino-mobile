@@ -4,14 +4,16 @@ import { router, useFocusEffect } from 'expo-router';
 import {
   ArrowLeft,
   ChevronRight,
-  FileText,
   MessageCircle,
   Paperclip,
+  Search,
+  UserMinus,
+  UserPlus,
   X,
 } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import { Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
@@ -28,6 +30,7 @@ import {
 } from '../../components/ui';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
+import { SecureImagePreview } from '../files/SecureImagePreview';
 import type { LocalTaskFile } from './fileContracts';
 import { isSupportedTaskFile, validateTaskFile } from './fileContracts';
 import {
@@ -36,6 +39,7 @@ import {
   type TaskAttachmentRecord,
   type TaskDependencyGraph,
   type TaskDetails,
+  type TaskMemberOption,
   type TaskRecord,
   taskService,
   type TaskStatus,
@@ -82,14 +86,6 @@ function fileSizeLabel(size: number | null | undefined): string | null {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function uploadedByLabel(
-  uploadedBy: string | null | undefined,
-  currentUserId: string | undefined,
-): string | null {
-  if (!uploadedBy) return null;
-  return uploadedBy === currentUserId ? 'Uploaded by you' : 'Uploaded by a workspace member';
-}
-
 function taskErrorMessage(error: unknown): string {
   if (error instanceof ApiNetworkError)
     return 'You appear to be offline. Reconnect and try loading the task again.';
@@ -124,6 +120,59 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       </AppText>
       {children}
     </View>
+  );
+}
+
+function TaskAttachmentCard({
+  attachment,
+  taskId,
+  workspaceId,
+  onOpen,
+}: {
+  attachment: TaskAttachmentRecord;
+  taskId: string;
+  workspaceId: string;
+  onOpen: () => void;
+}) {
+  const fileName = attachment.fileName ?? attachment.name ?? 'Task attachment';
+  const fileType = attachment.mimeType ?? attachment.fileType ?? '';
+  const supported =
+    Boolean(attachment.id) &&
+    attachment.source !== 'google-drive' &&
+    isSupportedTaskFile(fileName, fileType);
+  const download = useCallback(
+    () =>
+      taskService.downloadAttachment(taskId, attachment.id ?? '', workspaceId, attachment.source),
+    [attachment.id, attachment.source, taskId, workspaceId],
+  );
+  const card = (
+    <View style={{ gap: themeTokens.spacing.xs }}>
+      <SecureImagePreview
+        download={download}
+        fileName={fileName}
+        mimeType={supported ? fileType : 'application/octet-stream'}
+        size={attachment.fileSize}
+      />
+      {attachment.source === 'google-drive' && (
+        <AppText tone="warning" variant="caption">
+          Open in Google Drive is unavailable in the secure mobile viewer.
+        </AppText>
+      )}
+    </View>
+  );
+  return supported ? (
+    <AppCard
+      accessibilityLabel={`Open attachment ${fileName}`}
+      onPress={onOpen}
+      padding="sm"
+      style={{ width: '48%', borderWidth: 0 }}
+    >
+      {card}
+    </AppCard>
+  ) : (
+    <AppCard padding="sm" style={{ width: '48%', borderWidth: 0 }}>
+      {card}
+    </AppCard>
   );
 }
 
@@ -244,6 +293,13 @@ export function TaskDetailsScreen({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusSheetVisible, setStatusSheetVisible] = useState(false);
   const [assigneesSheetVisible, setAssigneesSheetVisible] = useState(false);
+  const [memberOptions, setMemberOptions] = useState<TaskMemberOption[]>([]);
+  const [memberOptionsLoading, setMemberOptionsLoading] = useState(false);
+  const [memberOptionsError, setMemberOptionsError] = useState<string | null>(null);
+  const [assigneeSearch, setAssigneeSearch] = useState('');
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<Set<string>>(new Set());
+  const [savingAssignees, setSavingAssignees] = useState(false);
+  const [assigneeSaveError, setAssigneeSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<LocalTaskFile | null>(null);
@@ -272,6 +328,10 @@ export function TaskDetailsScreen({
     status === 'authenticated' &&
     workspacePermissionStatus === 'ready' &&
     Boolean(activeWorkspace && workspaceId);
+  const canChangeStatus =
+    current?.details.access.canEdit === true && current.details.access.readOnly === false;
+  const canManageAssignees =
+    canChangeStatus && permissions?.permissions.assign_workspace_members === true;
   const backToContext = () => {
     if (returnToInbox) {
       router.replace('/(tabs)/inbox');
@@ -427,6 +487,69 @@ export function TaskDetailsScreen({
       }
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const openAssignees = () => {
+    if (!current) return;
+    const people = current.details.task.assignees?.length
+      ? current.details.task.assignees
+      : current.details.task.assignee
+        ? [current.details.task.assignee]
+        : [];
+    setSelectedAssigneeIds(new Set(people.map((person) => person.id)));
+    setAssigneeSearch('');
+    setAssigneeSaveError(null);
+    setMemberOptionsError(null);
+    setMemberOptionsLoading(true);
+    setAssigneesSheetVisible(true);
+  };
+
+  useEffect(() => {
+    if (!assigneesSheetVisible || !workspaceId || !canChangeStatus) return undefined;
+    const controller = new AbortController();
+    void taskService
+      .getMembers(workspaceId, controller.signal)
+      .then((members) => {
+        if (!controller.signal.aborted) setMemberOptions(members);
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setMemberOptionsError(
+            error instanceof ApiError && error.status === 403
+              ? 'You do not have permission to browse workspace members.'
+              : 'Workspace members could not be loaded. Try again.',
+          );
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setMemberOptionsLoading(false);
+      });
+    return () => controller.abort();
+  }, [assigneesSheetVisible, canChangeStatus, workspaceId]);
+
+  const saveAssignees = async () => {
+    if (!current || savingAssignees || !canChangeStatus) return;
+    setSavingAssignees(true);
+    setAssigneeSaveError(null);
+    try {
+      const updatedTask = await taskService.updateTask(
+        taskId,
+        current.workspaceId,
+        { assigneeIds: [...selectedAssigneeIds] },
+        current.details.access,
+      );
+      setLoadedTask({ ...current, details: { ...current.details, task: updatedTask } });
+      setAssigneesSheetVisible(false);
+      setStatusMessage('Assignees updated.');
+    } catch (error) {
+      setAssigneeSaveError(
+        error instanceof ApiError && error.status === 403
+          ? 'You do not have permission to change assignees.'
+          : 'Assignees could not be updated. The displayed assignment was not changed.',
+      );
+    } finally {
+      setSavingAssignees(false);
     }
   };
 
@@ -614,7 +737,6 @@ export function TaskDetailsScreen({
     );
   }
 
-  const canChangeStatus = access?.canEdit === true && access.readOnly === false;
   const isMember = permissions?.role === 'member';
   const canEditFields = canChangeStatus && !isMember;
   const assignedPeople = task.assignees?.length
@@ -645,7 +767,6 @@ export function TaskDetailsScreen({
           !(teamAssigneeAwaitingReview && candidate !== 'pending'),
       )
     : [];
-  const activity = [...(task.activities ?? [])].reverse();
   const attachments = task.attachments ?? [];
   const subtasks = task.subtasks ?? [];
   const dependencies = currentDependencies
@@ -686,6 +807,16 @@ export function TaskDetailsScreen({
         fileType,
         fileSize: attachment.fileSize == null ? '' : String(attachment.fileSize),
         source: attachment.source ?? '',
+        collection: JSON.stringify(
+          attachments
+            .filter((item): item is TaskAttachmentRecord & { id: string } => Boolean(item.id))
+            .map((item) => ({
+              id: item.id,
+              fileName: item.fileName ?? item.name ?? 'Task attachment',
+              fileType: item.mimeType ?? item.fileType ?? '',
+              source: item.source ?? '',
+            })),
+        ),
         ...(returnProjectId ? { projectId: returnProjectId, fromProject: '1' } : {}),
         ...(returnToInbox ? { returnTo: 'inbox' } : {}),
       },
@@ -810,7 +941,7 @@ export function TaskDetailsScreen({
             <Pressable
               accessibilityLabel={`Show all assignees, ${assignedPeople.length}`}
               accessibilityRole="button"
-              onPress={() => setAssigneesSheetVisible(true)}
+              onPress={openAssignees}
               style={{
                 minHeight: 48,
                 flexDirection: 'row',
@@ -847,6 +978,16 @@ export function TaskDetailsScreen({
             <AppText tone="secondary" variant="caption">
               Unassigned
             </AppText>
+          )}
+          {canManageAssignees && (
+            <AppButton
+              accessibilityLabel="Add Assignee"
+              icon={<UserPlus color={colors.primaryAction} size={18} />}
+              onPress={openAssignees}
+              variant="outline"
+            >
+              Add Assignee
+            </AppButton>
           )}
         </View>
 
@@ -932,64 +1073,17 @@ export function TaskDetailsScreen({
 
         {(attachments.length > 0 || canAttachFiles) && (
           <Section title={`Attachments (${attachments.length})`}>
-            {attachments.map((attachment, index) => (
-              <Pressable
-                accessibilityLabel={`Open attachment ${attachment.fileName ?? attachment.name ?? 'file'}`}
-                accessibilityRole="button"
-                accessibilityState={{
-                  disabled:
-                    !attachment.id ||
-                    attachment.source === 'google-drive' ||
-                    !isSupportedTaskFile(
-                      attachment.fileName ?? attachment.name ?? '',
-                      attachment.mimeType ?? attachment.fileType ?? '',
-                    ),
-                }}
-                disabled={
-                  !attachment.id ||
-                  attachment.source === 'google-drive' ||
-                  !isSupportedTaskFile(
-                    attachment.fileName ?? attachment.name ?? '',
-                    attachment.mimeType ?? attachment.fileType ?? '',
-                  )
-                }
-                key={attachment.id ?? `${attachment.fileName ?? attachment.name}-${index}`}
-                onPress={() => openAttachment(attachment)}
-                style={({ pressed }) => ({
-                  minHeight: themeTokens.touchTarget.minimum,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: themeTokens.spacing.sm,
-                  borderRadius: themeTokens.radius.sm,
-                  backgroundColor: pressed ? colors.surfaceSubtle : colors.surface,
-                  paddingHorizontal: themeTokens.spacing.sm,
-                })}
-              >
-                <FileText color={colors.primaryAction} size={19} />
-                <View style={{ flex: 1 }}>
-                  <AppText numberOfLines={1} variant="label">
-                    {attachment.fileName ?? attachment.name ?? 'Task attachment'}
-                  </AppText>
-                  <AppText tone="secondary" variant="caption">
-                    {[
-                      fileSizeLabel(attachment.fileSize),
-                      uploadedByLabel(attachment.uploadedBy, permissions?.userId),
-                      attachment.createdAt ? fullDate(attachment.createdAt) : null,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </AppText>
-                  {attachment.source === 'google-drive' && (
-                    <AppText tone="warning" variant="caption">
-                      Secure in-app opening is unavailable for Google Drive links.
-                    </AppText>
-                  )}
-                </View>
-                {attachment.source !== 'google-drive' && (
-                  <ChevronRight color={colors.textMuted} size={18} />
-                )}
-              </Pressable>
-            ))}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.sm }}>
+              {attachments.map((attachment, index) => (
+                <TaskAttachmentCard
+                  attachment={attachment}
+                  key={attachment.id ?? `${attachment.fileName ?? attachment.name}-${index}`}
+                  onOpen={() => openAttachment(attachment)}
+                  taskId={task.id}
+                  workspaceId={workspaceId ?? ''}
+                />
+              ))}
+            </View>
             {attachments.length === 0 && (
               <AppText tone="secondary" variant="caption">
                 No attachments yet.
@@ -1053,21 +1147,6 @@ export function TaskDetailsScreen({
             )}
           </Section>
         )}
-
-        {activity.length > 0 && (
-          <Section title={`Recent activity (${activity.length})`}>
-            {activity.map((item) => (
-              <AppCard key={item.id} padding="sm">
-                <AppText variant="caption">
-                  {personName(item.actor)} · {labelFor(item.actionType)}
-                </AppText>
-                <AppText tone="secondary" variant="caption">
-                  {fullDate(item.createdAt)}
-                </AppText>
-              </AppCard>
-            ))}
-          </Section>
-        )}
       </View>
       <BottomSheet
         onClose={() => setStatusSheetVisible(false)}
@@ -1090,6 +1169,29 @@ export function TaskDetailsScreen({
         {updating && <LoadingState label="Updating task status" />}
       </BottomSheet>
       <BottomSheet
+        footer={
+          canManageAssignees ? (
+            <View style={{ flexDirection: 'row', gap: themeTokens.spacing.sm }}>
+              <AppButton
+                accessibilityLabel="Cancel assignee changes"
+                onPress={() => setAssigneesSheetVisible(false)}
+                style={{ flex: 1 }}
+                variant="outline"
+              >
+                Cancel
+              </AppButton>
+              <AppButton
+                accessibilityLabel="Save assignee changes"
+                disabled={savingAssignees}
+                loading={savingAssignees}
+                onPress={() => void saveAssignees()}
+                style={{ flex: 1 }}
+              >
+                Save Changes
+              </AppButton>
+            </View>
+          ) : undefined
+        }
         onClose={() => setAssigneesSheetVisible(false)}
         title={`Assignees (${assignedPeople.length})`}
         visible={assigneesSheetVisible}
@@ -1099,26 +1201,110 @@ export function TaskDetailsScreen({
           showsVerticalScrollIndicator={false}
           style={{ maxHeight: 360 }}
         >
-          <View style={{ gap: themeTokens.spacing.xs }}>
-            {assignedPeople.map((person) => (
+          {canManageAssignees ? (
+            <View style={{ gap: themeTokens.spacing.sm }}>
               <View
-                key={person.id}
                 style={{
-                  minHeight: 48,
+                  minHeight: 44,
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: themeTokens.spacing.sm,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: themeTokens.radius.md,
+                  paddingHorizontal: themeTokens.spacing.sm,
                 }}
               >
-                <UserAvatar
-                  imageUrl={person.profilePictureUrl}
-                  name={personName(person)}
-                  size={36}
+                <Search color={colors.textMuted} size={18} />
+                <TextInput
+                  accessibilityLabel="Search workspace members"
+                  onChangeText={setAssigneeSearch}
+                  placeholder="Search members"
+                  placeholderTextColor={colors.textMuted}
+                  style={{ flex: 1, minHeight: 42, color: colors.text, paddingHorizontal: 8 }}
+                  value={assigneeSearch}
                 />
-                <AppText variant="label">{personName(person)}</AppText>
               </View>
-            ))}
-          </View>
+              {memberOptionsError && <InlineError message={memberOptionsError} />}
+              {memberOptionsLoading && <LoadingState label="Loading workspace members" />}
+              {!memberOptionsLoading && !memberOptionsError && (
+                <View style={{ gap: themeTokens.spacing.xs }}>
+                  {memberOptions
+                    .filter((member) =>
+                      `${member.firstName} ${member.lastName}`
+                        .toLowerCase()
+                        .includes(assigneeSearch.trim().toLowerCase()),
+                    )
+                    .map((member) => {
+                      const selected = selectedAssigneeIds.has(member.userId);
+                      return (
+                        <Pressable
+                          accessibilityLabel={`${selected ? 'Remove' : 'Add'} ${member.firstName} ${member.lastName}`}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          key={member.userId}
+                          onPress={() =>
+                            setSelectedAssigneeIds((currentIds) => {
+                              const next = new Set(currentIds);
+                              if (selected) next.delete(member.userId);
+                              else next.add(member.userId);
+                              return next;
+                            })
+                          }
+                          style={{
+                            minHeight: 52,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: themeTokens.spacing.sm,
+                            paddingHorizontal: themeTokens.spacing.xs,
+                          }}
+                        >
+                          <UserAvatar
+                            imageUrl={member.profilePictureUrl}
+                            name={`${member.firstName} ${member.lastName}`}
+                            size={36}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <AppText variant="label">
+                              {member.firstName} {member.lastName}
+                            </AppText>
+                            <AppText tone="secondary" variant="caption">
+                              {selected ? 'Assigned' : 'Not assigned'}
+                            </AppText>
+                          </View>
+                          {selected ? (
+                            <UserMinus color={colors.semantic.danger.foreground} size={18} />
+                          ) : (
+                            <UserPlus color={colors.primaryAction} size={18} />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                </View>
+              )}
+              {assigneeSaveError && <InlineError message={assigneeSaveError} />}
+            </View>
+          ) : (
+            <View style={{ gap: themeTokens.spacing.xs }}>
+              {assignedPeople.map((person) => (
+                <View
+                  key={person.id}
+                  style={{
+                    minHeight: 48,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: themeTokens.spacing.sm,
+                  }}
+                >
+                  <UserAvatar
+                    imageUrl={person.profilePictureUrl}
+                    name={personName(person)}
+                    size={36}
+                  />
+                  <AppText variant="label">{personName(person)}</AppText>
+                </View>
+              ))}
+            </View>
+          )}
         </ScrollView>
       </BottomSheet>
     </AppScreen>
