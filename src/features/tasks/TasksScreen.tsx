@@ -54,6 +54,7 @@ import {
   taskService,
   type TaskStatus,
 } from './service';
+import { type TaskPrefetchPriority, TaskPrefetchQueue } from './taskPrefetchQueue';
 import { getTaskSwipeActions, getTaskSwipeRevealWidth } from './taskSwipe';
 
 type StatusFilter = TaskStatus | '';
@@ -444,6 +445,8 @@ function TasksScreenContent() {
     key: string;
     active: boolean;
     requested: Set<string>;
+    cooldownUntil: Map<string, number>;
+    queue: TaskPrefetchQueue;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -587,9 +590,14 @@ function TasksScreenContent() {
         key: contextKey,
         active: true,
         requested: new Set(),
+        cooldownUntil: new Map(),
+        queue: new TaskPrefetchQueue(3),
       };
     }
     const context = accessPrefetchContext.current;
+    const visibleTaskIdSet = new Set(visibleTaskIds);
+    const priorityFor = (taskId: string): TaskPrefetchPriority =>
+      visibleTaskIdSet.has(taskId) ? 'visible' : 'lookahead';
     const visibleIndexes = visibleTaskIds
       .map((id) => currentPage.tasks.findIndex((task) => task.id === id))
       .filter((index) => index >= 0);
@@ -611,80 +619,108 @@ function TasksScreenContent() {
     };
     const scheduleAccess = (task: TaskListItem, attempt = 0) => {
       const requestKey = `access:${task.id}`;
+      const cooldown = context.cooldownUntil.get(requestKey) ?? 0;
+      if (cooldown > Date.now()) return;
+      if (cooldown) context.cooldownUntil.delete(requestKey);
       if (!context.active || context.requested.has(requestKey)) return;
       context.requested.add(requestKey);
       const accessKey = cacheKeys.task(userId, workspaceId, task.id);
       const cached = serverCache.get<TaskDetails>(accessKey);
-      const accessRequest =
-        task.access || (cached && serverCache.isFresh(accessKey, cachePolicy.taskDetails))
-          ? Promise.resolve(task.access ?? cached?.access)
-          : serverCache
-              .fetch(accessKey, () => taskService.getTask(task.id, workspaceId), {
-                staleTime: cachePolicy.taskDetails,
-              })
-              .then((details) => details.access);
-      void accessRequest
-        .then((access) => {
-          if (!access || !context.active || accessPrefetchContext.current !== context) return;
-          setTaskAccessById((current) => ({ ...current, [task.id]: access }));
-          traceTaskAccess(task.id, 'access', 'confirmed');
-        })
-        .catch((error: unknown) => {
-          traceTaskAccess(
-            task.id,
-            'access',
-            isTransientTaskAccessError(error) && attempt < 2 ? 'retrying' : 'failed',
-            error,
-          );
-          if (isTransientTaskAccessError(error) && attempt < 2) {
-            setTimeout(
-              () => {
-                if (context.active) {
-                  context.requested.delete(requestKey);
-                  scheduleAccess(task, attempt + 1);
-                }
-              },
-              500 * (attempt + 1),
+      context.queue.enqueue({
+        key: requestKey,
+        priority: priorityFor(task.id),
+        run: async () => {
+          try {
+            const access =
+              task.access || (cached && serverCache.isFresh(accessKey, cachePolicy.taskDetails))
+                ? (task.access ?? cached?.access)
+                : (
+                    await serverCache.fetch(
+                      accessKey,
+                      () => taskService.getTask(task.id, workspaceId),
+                      { staleTime: cachePolicy.taskDetails },
+                    )
+                  ).access;
+            if (!access || !context.active || accessPrefetchContext.current !== context) return;
+            setTaskAccessById((current) => ({ ...current, [task.id]: access }));
+            traceTaskAccess(task.id, 'access', 'confirmed');
+          } catch (error) {
+            const transient = isTransientTaskAccessError(error);
+            traceTaskAccess(
+              task.id,
+              'access',
+              transient && attempt < 2 ? 'retrying' : 'failed',
+              error,
             );
+            if (transient && attempt < 2) {
+              setTimeout(
+                () => {
+                  if (context.active) {
+                    context.requested.delete(requestKey);
+                    scheduleAccess(task, attempt + 1);
+                  }
+                },
+                500 * 2 ** attempt,
+              );
+            } else {
+              context.requested.delete(requestKey);
+              context.cooldownUntil.set(
+                requestKey,
+                Date.now() + (error instanceof ApiError && error.status === 403 ? 30_000 : 5_000),
+              );
+            }
           }
-        });
+        },
+      });
     };
     const scheduleWatchers = (task: TaskListItem, attempt = 0) => {
       const requestKey = `watchers:${task.id}`;
+      const cooldown = context.cooldownUntil.get(requestKey) ?? 0;
+      if (cooldown > Date.now()) return;
+      if (cooldown) context.cooldownUntil.delete(requestKey);
       if (!context.active || context.requested.has(requestKey)) return;
       context.requested.add(requestKey);
       const watcherKey = cacheKeys.watchers(userId, workspaceId, task.id);
       const cached = serverCache.get<TaskPerson[]>(watcherKey);
-      const watcherRequest =
-        cached && serverCache.isFresh(watcherKey, cachePolicy.watchers)
-          ? Promise.resolve(cached)
-          : serverCache.fetch(watcherKey, () => taskService.getWatchers(task.id, workspaceId), {
-              staleTime: cachePolicy.watchers,
-            });
-      void watcherRequest
-        .then((watchers) => {
-          applyWatcherState(task.id, watchers);
-          traceTaskAccess(task.id, 'watchers', 'confirmed');
-        })
-        .catch((error: unknown) => {
-          traceTaskAccess(
-            task.id,
-            'watchers',
-            isTransientTaskAccessError(error) && attempt < 2 ? 'retrying' : 'failed',
-            error,
-          );
-          if (isTransientTaskAccessError(error) && attempt < 2) {
-            setTimeout(
-              () => {
-                if (context.active) {
-                  context.requested.delete(requestKey);
-                  scheduleWatchers(task, attempt + 1);
-                }
-              },
-              500 * (attempt + 1),
+      context.queue.enqueue({
+        key: requestKey,
+        priority: priorityFor(task.id),
+        run: async () => {
+          try {
+            const watchers =
+              cached && serverCache.isFresh(watcherKey, cachePolicy.watchers)
+                ? cached
+                : await serverCache.fetch(
+                    watcherKey,
+                    () => taskService.getWatchers(task.id, workspaceId),
+                    { staleTime: cachePolicy.watchers },
+                  );
+            applyWatcherState(task.id, watchers);
+            traceTaskAccess(task.id, 'watchers', 'confirmed');
+          } catch (error) {
+            traceTaskAccess(
+              task.id,
+              'watchers',
+              isTransientTaskAccessError(error) && attempt < 2 ? 'retrying' : 'failed',
+              error,
             );
+            if (isTransientTaskAccessError(error) && attempt < 2) {
+              setTimeout(
+                () => {
+                  if (context.active) {
+                    context.requested.delete(requestKey);
+                    scheduleWatchers(task, attempt + 1);
+                  }
+                },
+                500 * 2 ** attempt,
+              );
+            } else {
+              context.requested.delete(requestKey);
+              context.cooldownUntil.set(requestKey, Date.now() + 5_000);
+            }
           }
-        });
+        },
+      });
     };
     for (const task of visibleTasks) {
       if (!task.access) scheduleAccess(task);
