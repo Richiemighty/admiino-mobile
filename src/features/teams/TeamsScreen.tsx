@@ -6,12 +6,14 @@ import { View } from 'react-native';
 import { ApiError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
 import { AppCard, AppScreen, AppText, InlineError, LoadingState } from '../../components/ui';
+import { cacheKeys } from '../../data/cacheKeys';
+import { serverCache } from '../../data/serverCache';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { projectService } from '../projects/service';
 
 export function TeamsScreen() {
-  const { activeWorkspace, status, workspacePermissionStatus } = useAuth();
+  const { activeWorkspace, status, user, workspacePermissionStatus } = useAuth();
   const { colors } = useAppTheme();
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,12 +26,22 @@ export function TeamsScreen() {
         return undefined;
       }
       const controller = new AbortController();
-      setLoading(true);
+      const currentUserId = user?.id;
+      const key = currentUserId ? cacheKeys.teams(currentUserId, workspaceId) : null;
+      const cached = key ? serverCache.get<{ id: string; name: string }[]>(key) : undefined;
+      if (cached) {
+        setTeams(cached);
+        setLoading(false);
+      } else setLoading(true);
       setError(null);
       void projectService
         .listTeams(workspaceId, controller.signal)
         .then((items) => {
-          if (!controller.signal.aborted) setTeams(items.map(({ id, name }) => ({ id, name })));
+          if (!controller.signal.aborted) {
+            const next = items.map(({ id, name }) => ({ id, name }));
+            if (key) serverCache.set(key, next);
+            setTeams(next);
+          }
         })
         .catch((requestError: unknown) => {
           if (controller.signal.aborted) return;
@@ -43,7 +55,7 @@ export function TeamsScreen() {
           if (!controller.signal.aborted) setLoading(false);
         });
       return () => controller.abort();
-    }, [status, workspaceId, workspacePermissionStatus]),
+    }, [status, user, workspaceId, workspacePermissionStatus]),
   );
 
   if (loading && !teams.length && !error) {

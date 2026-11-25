@@ -22,6 +22,8 @@ import {
   InlineError,
   LoadingState,
 } from '../../components/ui';
+import { cacheKeys } from '../../data/cacheKeys';
+import { serverCache } from '../../data/serverCache';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { canCreateProjects, isMyProject } from './permissions';
@@ -246,12 +248,18 @@ export function ProjectListScreen() {
       if (!isReady || !workspaceId) return undefined;
       const controller = new AbortController();
       const requestRetry = retry;
-      setLoading(true);
+      const key = userId ? cacheKeys.projects(userId, workspaceId, debouncedQuery) : null;
+      const cached = key ? serverCache.get<ProjectRecord[]>(key) : undefined;
+      if (cached) {
+        setLoaded({ workspaceId, search: debouncedQuery, projects: cached });
+        setLoading(false);
+      } else setLoading(true);
       setError(null);
       void projectService
         .listProjects(workspaceId, { search: debouncedQuery, signal: controller.signal })
         .then((projects) => {
           if (!controller.signal.aborted && requestRetry === retry) {
+            if (key) serverCache.set(key, projects);
             setLoaded({ workspaceId, search: debouncedQuery, projects });
           }
         })
@@ -277,7 +285,7 @@ export function ProjectListScreen() {
           if (!controller.signal.aborted && requestRetry === retry) setLoading(false);
         });
       return () => controller.abort();
-    }, [debouncedQuery, isReady, retry, workspaceId]),
+    }, [debouncedQuery, isReady, retry, userId, workspaceId]),
   );
 
   const filteredProjects = useMemo(() => {

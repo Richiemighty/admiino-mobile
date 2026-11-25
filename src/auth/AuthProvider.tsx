@@ -15,6 +15,7 @@ import type {
   MobileUser,
   MobileWorkspace,
 } from '../api/types';
+import { serverCache } from '../data/serverCache';
 import { clearConversationDrafts } from '../features/tasks/conversationDraft';
 import { deleteTemporaryConversationFiles } from '../features/tasks/conversationDraftFiles';
 import { workspaceService } from '../workspace/service';
@@ -279,6 +280,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
       return false;
     }
     const requestId = ++workspaceRequest.current;
+    if (activeWorkspace?.companyId && activeWorkspace.companyId !== workspaceId) {
+      serverCache.clearWorkspace(activeWorkspace.companyId);
+    }
     setActiveWorkspace(null);
     setSelectedWorkspaceId(workspaceId);
     setPermissions(null);
@@ -351,6 +355,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const logout = useCallback(async () => {
     clearConversationDrafts().forEach((draft) => deleteTemporaryConversationFiles(draft.files));
     await sessionService.logout();
+    serverCache.clearAuthenticated();
     clearWorkspaceState();
     setUser(null);
     setError(null);

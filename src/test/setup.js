@@ -1,3 +1,5 @@
+/* global afterEach */
+
 const { beforeEach, jest } = require('@jest/globals');
 
 process.env.EXPO_PUBLIC_APP_ENV = 'development';
@@ -81,6 +83,12 @@ jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => {
     default: Swipeable,
     SwipeDirection: { LEFT: 'left', RIGHT: 'right' },
   };
+});
+
+afterEach(() => {
+  // Server data is intentionally process-local in production. Tests must isolate
+  // authenticated cache entries between screen mounts.
+  require('../data/serverCache').serverCache.clearForTests();
 });
 jest.mock('lucide-react-native', () => require('./mocks/lucide-react-native'));
 jest.mock(

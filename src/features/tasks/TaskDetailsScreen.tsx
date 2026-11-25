@@ -28,6 +28,8 @@ import {
   LoadingState,
   UserAvatar,
 } from '../../components/ui';
+import { cacheKeys } from '../../data/cacheKeys';
+import { serverCache } from '../../data/serverCache';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { SecureImagePreview } from '../files/SecureImagePreview';
@@ -276,7 +278,8 @@ export function TaskDetailsScreen({
   returnProjectId?: string;
   returnToInbox?: boolean;
 }) {
-  const { activeWorkspace, permissions, status, workspacePermissionStatus, logout } = useAuth();
+  const { activeWorkspace, permissions, status, user, workspacePermissionStatus, logout } =
+    useAuth();
   const { colors } = useAppTheme();
   const workspaceId = activeWorkspace?.companyId ?? null;
   const [loadedTask, setLoadedTask] = useState<LoadedTask | null>(null);
@@ -373,7 +376,12 @@ export function TaskDetailsScreen({
       const requestAttempt = retry;
       request.current?.abort();
       request.current = controller;
-      setLoading(true);
+      const key = user?.id ? cacheKeys.task(user.id, workspaceId, taskId) : null;
+      const cached = key ? serverCache.get<LoadedTask>(key) : undefined;
+      if (cached?.workspaceId === workspaceId && cached.taskId === taskId) {
+        setLoadedTask(cached);
+        setLoading(false);
+      } else setLoading(true);
       setLoadError(null);
       setStatusError(null);
       setStatusMessage(null);
@@ -382,7 +390,9 @@ export function TaskDetailsScreen({
         .getTask(taskId, workspaceId, controller.signal)
         .then((details) => {
           if (controller.signal.aborted || requestAttempt !== retry) return;
-          setLoadedTask({ workspaceId, taskId, details });
+          const next = { workspaceId, taskId, details };
+          if (key) serverCache.set(key, next);
+          setLoadedTask(next);
           if (details.task.teamId) {
             void taskService
               .getTeamLead(details.task.teamId, workspaceId, controller.signal)
@@ -439,7 +449,7 @@ export function TaskDetailsScreen({
           if (!controller.signal.aborted && requestAttempt === retry) setLoading(false);
         });
       return () => controller.abort();
-    }, [isReady, logout, retry, taskId, workspaceId]),
+    }, [isReady, logout, retry, taskId, user, workspaceId]),
   );
 
   const changeStatus = async (nextStatus: TaskStatus) => {

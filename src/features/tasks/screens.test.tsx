@@ -197,9 +197,7 @@ describe('P12 task lists, detail, and forms', () => {
     await screen.findByText('Swipeable task');
     expect(await screen.findByLabelText('Change status for Swipeable task')).toBeTruthy();
     expect(await screen.findByLabelText('Edit Swipeable task')).toBeTruthy();
-    expect(
-      await screen.findByLabelText('Watch status unavailable for Swipeable task'),
-    ).toBeTruthy();
+    expect(await screen.findByLabelText('Watch Swipeable task')).toBeTruthy();
 
     await fireEvent(
       await screen.findByLabelText('Open task Swipeable task'),

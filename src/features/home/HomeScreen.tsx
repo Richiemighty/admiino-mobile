@@ -24,6 +24,8 @@ import {
   InlineError,
   LoadingState,
 } from '../../components/ui';
+import { cacheKeys } from '../../data/cacheKeys';
+import { serverCache } from '../../data/serverCache';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { getDueDateLabel, getDueSoonTasks, getNeedsAttentionTasks } from './dashboard-utils';
@@ -164,16 +166,25 @@ export function HomeScreen() {
 
       const controller = new AbortController();
       const requestAttempt = loadAttempt;
+      const currentUserId = user?.id;
+      const dashboardKey = currentUserId ? cacheKeys.home(currentUserId, workspaceId) : null;
+      const cached = dashboardKey ? serverCache.get<HomeDashboardData>(dashboardKey) : undefined;
       void Promise.resolve()
         .then(() => {
           if (controller.signal.aborted) return undefined;
-          setDashboard((current) => (current?.workspaceId === workspaceId ? current : null));
-          setLoading(true);
-          setErrorState(null);
+          if (cached) {
+            setDashboard(cached);
+            setLoading(false);
+          } else {
+            setDashboard((current) => (current?.workspaceId === workspaceId ? current : null));
+            setLoading(true);
+            setErrorState(null);
+          }
           return homeService.getDashboardData(workspaceId, controller.signal);
         })
         .then((response) => {
           if (!controller.signal.aborted && requestAttempt === loadAttempt && response) {
+            if (dashboardKey) serverCache.set(dashboardKey, response);
             setDashboard(response);
           }
         })
@@ -198,7 +209,7 @@ export function HomeScreen() {
         });
 
       return () => controller.abort();
-    }, [loadAttempt, status, workspaceId, workspacePermissionStatus]),
+    }, [loadAttempt, status, user, workspaceId, workspacePermissionStatus]),
   );
 
   const retry = () => setLoadAttempt((attempt) => attempt + 1);

@@ -20,6 +20,8 @@ import {
   InlineError,
   LoadingState,
 } from '../../components/ui';
+import { cacheKeys } from '../../data/cacheKeys';
+import { serverCache } from '../../data/serverCache';
 import { traceNavigation } from '../../navigation/devNavigationTrace';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
@@ -307,7 +309,8 @@ function NotificationRow({
 }
 
 export function InboxScreen() {
-  const { activeWorkspace, permissions, status, workspacePermissionStatus, logout } = useAuth();
+  const { activeWorkspace, permissions, status, user, workspacePermissionStatus, logout } =
+    useAuth();
   useEffect(() => {
     traceNavigation({ event: 'inbox-mounted', pathname: '/inbox' });
     return () => traceNavigation({ event: 'inbox-unmounted', pathname: '/inbox' });
@@ -327,6 +330,7 @@ export function InboxScreen() {
       isReady={status === 'authenticated' && workspacePermissionStatus === 'ready'}
       logout={logout}
       role={permissions?.role}
+      userId={user?.id}
       workspaceId={workspaceId}
     />
   );
@@ -338,12 +342,14 @@ function InboxContent({
   isReady,
   logout,
   role,
+  userId,
 }: {
   workspaceId: string;
   canReviewRequests: boolean;
   isReady: boolean;
   logout: () => Promise<void>;
   role?: string;
+  userId?: string;
 }) {
   const { colors } = useAppTheme();
   const { unreadCount, countError, refreshUnreadCount } = useInboxCount();
@@ -402,6 +408,12 @@ function InboxContent({
       setRefreshing(isRefresh);
       setError(null);
       setOperationError(null);
+      const key = userId ? cacheKeys.inbox(userId, workspaceId, filter) : null;
+      const cached = key ? serverCache.get<LoadedPage>(key) : undefined;
+      if (!isRefresh && cached) {
+        setLoaded(cached);
+        setLoading(false);
+      }
       try {
         const page = await inboxService.listNotifications(workspaceId, {
           limit: NOTIFICATION_PAGE_SIZE,
@@ -417,6 +429,15 @@ function InboxContent({
           hasMore: page.hasMore,
           nextOffset: NOTIFICATION_PAGE_SIZE,
         });
+        if (key) {
+          serverCache.set(key, {
+            workspaceId,
+            filter,
+            notifications: page.notifications,
+            hasMore: page.hasMore,
+            nextOffset: NOTIFICATION_PAGE_SIZE,
+          });
+        }
         void refreshUnreadCount();
       } catch (requestError) {
         if (controller.signal.aborted || activeWorkspace.current !== workspaceId) return;
@@ -429,7 +450,7 @@ function InboxContent({
         }
       }
     },
-    [filter, handleFatal, refreshUnreadCount, workspaceId],
+    [filter, handleFatal, refreshUnreadCount, userId, workspaceId],
   );
 
   useFocusEffect(

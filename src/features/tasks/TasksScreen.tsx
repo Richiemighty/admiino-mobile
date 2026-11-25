@@ -36,6 +36,8 @@ import {
   LoadingState,
   UserAvatar,
 } from '../../components/ui';
+import { cacheKeys } from '../../data/cacheKeys';
+import { cachePolicy, serverCache } from '../../data/serverCache';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { getDueDateLabel } from '../home/dashboard-utils';
@@ -419,6 +421,7 @@ function TasksScreenContent() {
   const [retry, setRetry] = useState(0);
   const activeRequest = useRef<AbortController | null>(null);
   const moreRequest = useRef<AbortController | null>(null);
+  const lastLoadedListKey = useRef<string | null>(null);
   const workspaceId = activeWorkspace?.companyId ?? null;
   const canViewAllTasks = permissions?.permissions.view_all_tasks === true;
   const activeRelation = relation === 'all' && !canViewAllTasks ? 'assigned' : relation;
@@ -437,6 +440,8 @@ function TasksScreenContent() {
     priorityFilter,
     debouncedQuery,
   ].join('|');
+  const tasksCacheKey =
+    userId && workspaceId ? cacheKeys.tasks(userId, workspaceId, listKey) : null;
   const currentPage =
     pageData?.workspaceId === workspaceId && pageData.key === listKey ? pageData : null;
 
@@ -455,9 +460,22 @@ function TasksScreenContent() {
       activeRequest.current?.abort();
       moreRequest.current?.abort();
       activeRequest.current = controller;
-      setLoading(true);
+      const cached = tasksCacheKey ? serverCache.get<ScopedTaskPage>(tasksCacheKey) : undefined;
+      if (cached && cached.workspaceId === workspaceId && cached.key === listKey) {
+        setPageData(cached);
+        setLoading(false);
+        if (
+          lastLoadedListKey.current === listKey &&
+          serverCache.isFresh(tasksCacheKey ?? '', cachePolicy.taskList) &&
+          retry === 0
+        ) {
+          return () => controller.abort();
+        }
+      } else {
+        setLoading(true);
+      }
       setLoadingMore(false);
-      setError(null);
+      if (!cached) setError(null);
       void taskService
         .listTasks(
           workspaceId,
@@ -473,7 +491,10 @@ function TasksScreenContent() {
         )
         .then((response) => {
           if (controller.signal.aborted || requestAttempt !== retry) return;
-          setPageData({ ...response, workspaceId, key: listKey });
+          const nextPage = { ...response, workspaceId, key: listKey };
+          if (tasksCacheKey) serverCache.set(tasksCacheKey, nextPage);
+          lastLoadedListKey.current = listKey;
+          setPageData(nextPage);
         })
         .catch(async (requestError: unknown) => {
           if (controller.signal.aborted || requestAttempt !== retry) return;
@@ -511,8 +532,53 @@ function TasksScreenContent() {
       statusFilter,
       workspaceId,
       retry,
+      tasksCacheKey,
     ]),
   );
+
+  useEffect(() => {
+    if (!workspaceId || !userId || !currentPage?.tasks.length) return undefined;
+    const controller = new AbortController();
+    const visibleTasks = currentPage.tasks.slice(0, 12);
+    const prefetch = async () => {
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < visibleTasks.length && !controller.signal.aborted) {
+          const task = visibleTasks[cursor++];
+          const key = cacheKeys.watchers(userId, workspaceId, task.id);
+          const cached = serverCache.get<boolean>(key);
+          if (cached !== undefined) {
+            setWatchStateByTask((current) => ({ ...current, [task.id]: cached }));
+            setWatchingTaskIds((current) => {
+              const next = new Set(current);
+              if (cached) next.add(task.id);
+              else next.delete(task.id);
+              return next;
+            });
+            continue;
+          }
+          try {
+            const watchers = await taskService.getWatchers(task.id, workspaceId, controller.signal);
+            if (controller.signal.aborted) return;
+            const watching = watchers.some((watcher) => watcher.id === userId);
+            serverCache.set(key, watching);
+            setWatchStateByTask((current) => ({ ...current, [task.id]: watching }));
+            setWatchingTaskIds((current) => {
+              const next = new Set(current);
+              if (watching) next.add(task.id);
+              else next.delete(task.id);
+              return next;
+            });
+          } catch {
+            // A failed prefetch must not be interpreted as "not watching".
+          }
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+    };
+    void prefetch();
+    return () => controller.abort();
+  }, [currentPage?.tasks, userId, workspaceId]);
 
   const loadMore = async () => {
     if (
@@ -552,6 +618,15 @@ function TasksScreenContent() {
           key: listKey,
         };
       });
+      if (tasksCacheKey) {
+        serverCache.update<ScopedTaskPage>(tasksCacheKey, (previous) => ({
+          ...previous,
+          ...next,
+          tasks: [...previous.tasks, ...next.tasks],
+          workspaceId,
+          key: listKey,
+        }));
+      }
     } catch (requestError) {
       if (!controller.signal.aborted) setError(requestErrorMessage(requestError));
     } finally {
@@ -560,24 +635,16 @@ function TasksScreenContent() {
   };
 
   const refreshWatchState = (taskId: string) => {
-    if (!workspaceId) return;
-    setWatchStateByTask((current) => ({ ...current, [taskId]: null }));
-    void taskService
-      .getWatchers(taskId, workspaceId)
-      .then((watchers) => {
-        const isWatching = watchers.some((watcher) => watcher.id === userId);
-        setWatchStateByTask((current) => ({ ...current, [taskId]: isWatching }));
-        setWatchingTaskIds((current) => {
-          const next = new Set(current);
-          if (isWatching) next.add(taskId);
-          else next.delete(taskId);
-          return next;
-        });
-      })
-      .catch(() => {
-        setWatchStateByTask((current) => ({ ...current, [taskId]: null }));
-        setError('The current watch state could not be confirmed. Try again.');
-      });
+    if (!workspaceId || !userId) return;
+    const cached = serverCache.get<boolean>(cacheKeys.watchers(userId, workspaceId, taskId));
+    if (cached === undefined) return;
+    setWatchStateByTask((current) => ({ ...current, [taskId]: cached }));
+    setWatchingTaskIds((current) => {
+      const next = new Set(current);
+      if (cached) next.add(taskId);
+      else next.delete(taskId);
+      return next;
+    });
   };
 
   const resolveTaskAccess = (task: TaskListItem) => {
@@ -936,6 +1003,12 @@ function TasksScreenContent() {
                   try {
                     if (isWatching) await taskService.unwatchTask(selected.id, workspaceId);
                     else await taskService.watchTask(selected.id, workspaceId);
+                    if (userId) {
+                      serverCache.set(
+                        cacheKeys.watchers(userId, workspaceId, selected.id),
+                        !isWatching,
+                      );
+                    }
                     setWatchingTaskIds((current) => {
                       const next = new Set(current);
                       if (isWatching) next.delete(selected.id);
@@ -1026,6 +1099,12 @@ function TasksScreenContent() {
                       await taskService.watchTask(actionTask.id, workspaceId);
                       setWatchingTaskIds((current) => new Set(current).add(actionTask.id));
                     }
+                    if (userId) {
+                      serverCache.set(
+                        cacheKeys.watchers(userId, workspaceId, actionTask.id),
+                        !isWatching,
+                      );
+                    }
                     setWatchStateByTask((current) => ({
                       ...current,
                       [actionTask.id]: !isWatching,
@@ -1088,6 +1167,14 @@ function TasksScreenContent() {
                           }
                         : previous,
                     );
+                    if (tasksCacheKey) {
+                      serverCache.update<ScopedTaskPage>(tasksCacheKey, (previous) => ({
+                        ...previous,
+                        tasks: previous.tasks.map((task) =>
+                          task.id === updated.id ? { ...task, ...updated } : task,
+                        ),
+                      }));
+                    }
                     setStatusTask(null);
                     setOpenTaskId(null);
                   } catch (statusError) {
