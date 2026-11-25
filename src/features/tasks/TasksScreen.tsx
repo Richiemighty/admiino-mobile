@@ -187,7 +187,7 @@ function TaskCard({
     <View style={{ minHeight: 112, overflow: 'hidden', borderRadius: themeTokens.radius.md }}>
       <ReanimatedSwipeable
         ref={swipeableRef}
-        dragOffsetFromRight={16}
+        dragOffsetFromRight={-16}
         friction={1.2}
         overshootRight={false}
         renderRightActions={(_progress, _translation, methods) => {

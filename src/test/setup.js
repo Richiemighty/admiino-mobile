@@ -69,6 +69,7 @@ jest.mock('react-native-gesture-handler/ReanimatedSwipeable', () => {
         onSwipeableClose: props.onSwipeableClose,
         onSwipeableOpen: props.onSwipeableOpen,
         onSwipeableOpenStartDrag: props.onSwipeableOpenStartDrag,
+        dragOffsetFromRight: props.dragOffsetFromRight,
       },
       actions,
       props.children,

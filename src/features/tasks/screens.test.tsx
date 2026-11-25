@@ -405,6 +405,7 @@ describe('P12 task lists, detail, and forms', () => {
     jest.mocked(taskService.listTasks).mockResolvedValue(page('workspace-1', 'Access pending'));
     await renderWithProviders(<TasksScreen />);
     const row = await screen.findByTestId('task-swipeable-workspace-1-Access pending');
+    expect(row.props.dragOffsetFromRight).toBe(-16);
     expect(screen.queryByLabelText('Edit Access pending')).toBeNull();
 
     await fireEvent(row, 'swipeableOpenStartDrag', 'left');
