@@ -45,8 +45,10 @@ import {
   TASK_PRIORITIES,
   TASK_STATUSES,
   type TaskAccess,
+  type TaskDetails,
   type TaskListItem,
   type TaskPage,
+  type TaskPerson,
   type TaskPriority,
   type TaskRelation,
   taskService,
@@ -576,18 +578,19 @@ function TasksScreenContent() {
           const task = visibleTasks[cursor++];
           const watcherKey = cacheKeys.watchers(userId, workspaceId, task.id);
           const accessKey = cacheKeys.task(userId, workspaceId, task.id);
-          const cachedWatcher = serverCache.get<boolean>(watcherKey);
-          const cachedDetails = serverCache.get<{ access?: TaskAccess }>(accessKey);
+          const cachedWatcher = serverCache.get<TaskPerson[]>(watcherKey);
+          const cachedDetails = serverCache.get<TaskDetails>(accessKey);
           if (task.access) {
             setTaskAccessById((current) => ({ ...current, [task.id]: task.access! }));
           } else if (cachedDetails?.access) {
             setTaskAccessById((current) => ({ ...current, [task.id]: cachedDetails.access! }));
           }
-          if (cachedWatcher !== undefined) {
-            setWatchStateByTask((current) => ({ ...current, [task.id]: cachedWatcher }));
+          if (cachedWatcher) {
+            const watching = cachedWatcher.some((watcher) => watcher.id === userId);
+            setWatchStateByTask((current) => ({ ...current, [task.id]: watching }));
             setWatchingTaskIds((current) => {
               const next = new Set(current);
-              if (cachedWatcher) next.add(task.id);
+              if (watching) next.add(task.id);
               else next.delete(task.id);
               return next;
             });
@@ -614,7 +617,7 @@ function TasksScreenContent() {
             );
             if (controller.signal.aborted) return;
             const watching = watchers.some((watcher) => watcher.id === userId);
-            serverCache.set(watcherKey, watching);
+            serverCache.set(watcherKey, watchers);
             setWatchStateByTask((current) => ({ ...current, [task.id]: watching }));
             setWatchingTaskIds((current) => {
               const next = new Set(current);
@@ -694,15 +697,38 @@ function TasksScreenContent() {
 
   const refreshWatchState = (taskId: string) => {
     if (!workspaceId || !userId) return;
-    const cached = serverCache.get<boolean>(cacheKeys.watchers(userId, workspaceId, taskId));
-    if (cached === undefined) return;
-    setWatchStateByTask((current) => ({ ...current, [taskId]: cached }));
+    const cached = serverCache.get<TaskPerson[]>(cacheKeys.watchers(userId, workspaceId, taskId));
+    if (!cached) return;
+    const watching = cached.some((watcher) => watcher.id === userId);
+    setWatchStateByTask((current) => ({ ...current, [taskId]: watching }));
     setWatchingTaskIds((current) => {
       const next = new Set(current);
-      if (cached) next.add(taskId);
+      if (watching) next.add(taskId);
       else next.delete(taskId);
       return next;
     });
+  };
+
+  const updateWatcherCache = (taskId: string, wasWatching: boolean) => {
+    if (!userId || !workspaceId || !user) return;
+    const key = cacheKeys.watchers(userId, workspaceId, taskId);
+    const cached = serverCache.get<TaskPerson[]>(key);
+    if (!cached) return;
+    serverCache.set(
+      key,
+      wasWatching
+        ? cached.filter((watcher) => watcher.id !== userId)
+        : [
+            ...cached,
+            {
+              id: userId,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              email: user.email,
+              profilePictureUrl: user.profilePictureUrl,
+            },
+          ],
+    );
   };
 
   const closeOpenSwipeable = () => {
@@ -1052,12 +1078,7 @@ function TasksScreenContent() {
                   try {
                     if (isWatching) await taskService.unwatchTask(selected.id, workspaceId);
                     else await taskService.watchTask(selected.id, workspaceId);
-                    if (userId) {
-                      serverCache.set(
-                        cacheKeys.watchers(userId, workspaceId, selected.id),
-                        !isWatching,
-                      );
-                    }
+                    updateWatcherCache(selected.id, isWatching);
                     setWatchingTaskIds((current) => {
                       const next = new Set(current);
                       if (isWatching) next.delete(selected.id);
@@ -1148,12 +1169,7 @@ function TasksScreenContent() {
                       await taskService.watchTask(actionTask.id, workspaceId);
                       setWatchingTaskIds((current) => new Set(current).add(actionTask.id));
                     }
-                    if (userId) {
-                      serverCache.set(
-                        cacheKeys.watchers(userId, workspaceId, actionTask.id),
-                        !isWatching,
-                      );
-                    }
+                    updateWatcherCache(actionTask.id, isWatching);
                     setWatchStateByTask((current) => ({
                       ...current,
                       [actionTask.id]: !isWatching,

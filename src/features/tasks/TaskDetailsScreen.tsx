@@ -377,9 +377,9 @@ export function TaskDetailsScreen({
       request.current?.abort();
       request.current = controller;
       const key = user?.id ? cacheKeys.task(user.id, workspaceId, taskId) : null;
-      const cached = key ? serverCache.get<LoadedTask>(key) : undefined;
-      if (cached?.workspaceId === workspaceId && cached.taskId === taskId) {
-        setLoadedTask(cached);
+      const cached = key ? serverCache.get<TaskDetails>(key) : undefined;
+      if (cached?.task.companyId === workspaceId && cached.task.id === taskId) {
+        setLoadedTask({ workspaceId, taskId, details: cached });
         setLoading(false);
       } else setLoading(true);
       setLoadError(null);
@@ -398,7 +398,6 @@ export function TaskDetailsScreen({
         .then((details) => {
           if (controller.signal.aborted || requestAttempt !== retry) return;
           const next = { workspaceId, taskId, details };
-          if (key) serverCache.set(key, next);
           setLoadedTask(next);
           if (details.task.teamId) {
             void taskService
@@ -481,6 +480,12 @@ export function TaskDetailsScreen({
         ...current,
         details: { ...current.details, task: updatedTask },
       });
+      if (user?.id) {
+        serverCache.set(cacheKeys.task(user.id, current.workspaceId, taskId), {
+          ...current.details,
+          task: updatedTask,
+        });
+      }
       setStatusMessage(`Status updated to ${labelFor(updatedTask.status)}.`);
     } catch (updateError) {
       if (updateError instanceof ApiError && updateError.status === 401) {
@@ -501,6 +506,8 @@ export function TaskDetailsScreen({
           try {
             const latest = await taskService.getTask(taskId, current.workspaceId);
             setLoadedTask({ ...current, details: latest });
+            if (user?.id)
+              serverCache.set(cacheKeys.task(user.id, current.workspaceId, taskId), latest);
           } catch {
             setStatusError(
               `${statusUpdateError(updateError)} The latest task status could not be reloaded.`,
@@ -563,6 +570,12 @@ export function TaskDetailsScreen({
         current.details.access,
       );
       setLoadedTask({ ...current, details: { ...current.details, task: updatedTask } });
+      if (user?.id) {
+        serverCache.set(cacheKeys.task(user.id, current.workspaceId, taskId), {
+          ...current.details,
+          task: updatedTask,
+        });
+      }
       setAssigneesSheetVisible(false);
       setStatusMessage('Assignees updated.');
     } catch (error) {
@@ -672,20 +685,23 @@ export function TaskDetailsScreen({
         current.details.access,
       );
       if (contextRef.current !== uploadContext) return;
+      const nextDetails: TaskDetails = {
+        ...current.details,
+        task: {
+          ...current.details.task,
+          attachments: [...(current.details.task.attachments ?? []), uploaded],
+        },
+      };
       setLoadedTask((loadedValue) =>
         loadedValue?.workspaceId === current.workspaceId && loadedValue.taskId === taskId
           ? {
               ...loadedValue,
-              details: {
-                ...loadedValue.details,
-                task: {
-                  ...loadedValue.details.task,
-                  attachments: [...(loadedValue.details.task.attachments ?? []), uploaded],
-                },
-              },
+              details: nextDetails,
             }
           : loadedValue,
       );
+      if (user?.id)
+        serverCache.set(cacheKeys.task(user.id, current.workspaceId, taskId), nextDetails);
       discardTaskAttachment();
       setStatusMessage('Attachment uploaded.');
     } catch (error) {
