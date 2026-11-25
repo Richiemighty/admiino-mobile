@@ -4,15 +4,15 @@ import { type AppEnvironmentName, getAppEnvironment } from './src/config/env.ts'
 
 const APP_IDENTITIES: Record<AppEnvironmentName, { displayName: string; scheme: string }> = {
   development: {
-    displayName: 'Admiino Mobile (Development)',
+    displayName: 'Admiino (Development)',
     scheme: 'admiinomobile-dev',
   },
   staging: {
-    displayName: 'Admiino Mobile (Staging)',
+    displayName: 'Admiino (Staging)',
     scheme: 'admiinomobile-staging',
   },
   production: {
-    displayName: 'Admiino Mobile',
+    displayName: 'Admiino',
     scheme: 'admiinomobile',
   },
 };

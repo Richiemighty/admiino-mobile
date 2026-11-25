@@ -97,6 +97,16 @@ function projectErrorMessage(error: unknown): string {
   return 'Project details could not be loaded. Please try again.';
 }
 
+function projectMemberErrorMessage(error: unknown): string {
+  if (error instanceof ApiError && error.status === 403)
+    return 'You do not have permission to view members for this project.';
+  if (error instanceof ApiError && error.status === 404)
+    return 'This project is unavailable in the active workspace.';
+  if (error instanceof ApiNetworkError)
+    return 'You appear to be offline. Reconnect and try loading project members again.';
+  return 'Project members could not be loaded. Please try again.';
+}
+
 function initialsFor(member: ProjectMember): string {
   return [member.firstName, member.lastName]
     .filter(Boolean)
@@ -222,7 +232,9 @@ export function ProjectDetailsScreen({
             taskError:
               tasksResult.status === 'rejected' ? 'Project tasks could not be loaded.' : null,
             memberError:
-              membersResult.status === 'rejected' ? 'Project members could not be loaded.' : null,
+              membersResult.status === 'rejected'
+                ? projectMemberErrorMessage(membersResult.reason)
+                : null,
           });
         })
         .catch(async (requestError: unknown) => {
@@ -784,29 +796,41 @@ export function ProjectDetailsScreen({
                     <ChevronRight color={colors.textMuted} size={18} />
                   </AppCard>
                 ))}
-                {fileListing.files.map((file) => (
-                  <AppCard
-                    key={file.id}
-                    padding="sm"
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: themeTokens.spacing.sm,
-                      borderWidth: 0,
-                    }}
-                  >
-                    <FileText color={colors.textMuted} size={18} />
-                    <View style={{ flex: 1 }}>
-                      <AppText numberOfLines={1} variant="label">
+                <View
+                  style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.sm }}
+                >
+                  {fileListing.files.map((file) => (
+                    <AppCard
+                      key={file.id}
+                      padding="sm"
+                      style={{
+                        width: '48%',
+                        minHeight: 124,
+                        gap: themeTokens.spacing.sm,
+                        borderWidth: 0,
+                      }}
+                    >
+                      <View
+                        style={{
+                          height: 56,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: themeTokens.radius.sm,
+                          backgroundColor: colors.surfaceSubtle,
+                        }}
+                      >
+                        <FileText color={colors.primaryAction} size={28} />
+                      </View>
+                      <AppText numberOfLines={2} variant="label">
                         {file.fileName}
                       </AppText>
                       <AppText numberOfLines={1} tone="secondary" variant="caption">
                         {file.fileType}
                         {file.fileSize ? ` · ${Math.ceil(file.fileSize / 1024)} KB` : ''}
                       </AppText>
-                    </View>
-                  </AppCard>
-                ))}
+                    </AppCard>
+                  ))}
+                </View>
                 {!fileListing.files.length && !fileListing.folders.length && (
                   <AppText tone="secondary">This project folder is empty.</AppText>
                 )}

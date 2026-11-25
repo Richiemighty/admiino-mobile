@@ -13,7 +13,6 @@ import { FlatList, Image, Pressable, RefreshControl, TextInput, View } from 'rea
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
-import { MainAppHeader } from '../../components/navigation/MainAppHeader';
 import {
   AppButton,
   AppCard,
@@ -312,8 +311,7 @@ export function ProjectListScreen() {
         : 'No projects yet';
 
   return (
-    <AppScreen edges={['right', 'bottom', 'left']} padding="md">
-      <MainAppHeader />
+    <AppScreen padding="md">
       <View style={{ paddingHorizontal: themeTokens.spacing.md, flex: 1 }}>
         <FlatList
           contentContainerStyle={{

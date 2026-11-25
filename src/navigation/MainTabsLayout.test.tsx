@@ -24,12 +24,13 @@ describe('P10 main tab structure', () => {
     } as never);
   });
 
-  it('keeps the five role-independent tabs in the required order', async () => {
+  it('keeps the six role-independent tabs in the required order', async () => {
     await renderWithProviders(<MainTabsLayout />);
 
     expect(screen.getAllByTestId(/tab-screen-/).map((element) => element.props.testID)).toEqual([
       'tab-screen-index',
       'tab-screen-tasks',
+      'tab-screen-teams',
       'tab-screen-projects',
       'tab-screen-calendar',
       'tab-screen-more',

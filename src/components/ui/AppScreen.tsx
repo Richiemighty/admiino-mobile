@@ -25,7 +25,7 @@ export function AppScreen({
   children,
   scrollable = false,
   keyboardAvoiding = false,
-  edges = ['right', 'bottom', 'left'],
+  edges = ['top', 'right', 'bottom', 'left'],
   padding = 'md',
   style,
   contentContainerStyle,

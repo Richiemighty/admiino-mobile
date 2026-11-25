@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { Alert, View } from 'react-native';
 
 import { useAuth } from '../../auth/AuthProvider';
-import { MainAppHeader } from '../../components/navigation/MainAppHeader';
 import { QuickWorkspaceSwitcher } from '../../components/navigation/QuickWorkspaceSwitcher';
 import {
   AppButton,
@@ -48,9 +47,8 @@ export function MoreScreen() {
   };
 
   return (
-    <AppScreen edges={['right', 'bottom', 'left']} padding="md">
-      <MainAppHeader />
-      <View style={{ flex: 1, padding: themeTokens.spacing.xl }}>
+    <AppScreen padding="md" scrollable>
+      <View style={{ padding: themeTokens.spacing.xs }}>
         <View
           style={{ width: '100%', maxWidth: 680, alignSelf: 'center', gap: themeTokens.spacing.lg }}
         >
@@ -96,7 +94,27 @@ export function MoreScreen() {
           </View>
 
           <View style={{ gap: themeTokens.spacing.sm }}>
-            <AppText variant="label">Settings</AppText>
+            <AppText variant="label">Work and collaboration</AppText>
+            {[
+              ['Tasks', '/(tabs)/tasks'],
+              ['Teams', '/(tabs)/teams'],
+              ['Projects', '/(tabs)/projects'],
+              ['Calendar', '/(tabs)/calendar'],
+              ['Inbox', '/(tabs)/inbox'],
+            ].map(([label, path]) => (
+              <AppButton
+                key={label}
+                accessibilityLabel={`Open ${label}`}
+                onPress={() => router.push(path as never)}
+                variant="outline"
+              >
+                {label}
+              </AppButton>
+            ))}
+          </View>
+
+          <View style={{ gap: themeTokens.spacing.sm }}>
+            <AppText variant="label">Account and settings</AppText>
             <AppButton
               accessibilityLabel="Open Settings"
               icon={<Settings color={colors.primaryAction} size={18} />}
@@ -104,6 +122,13 @@ export function MoreScreen() {
               variant="outline"
             >
               Settings
+            </AppButton>
+            <AppButton
+              accessibilityLabel="Open Notification Preferences"
+              onPress={() => router.push('/notification-settings')}
+              variant="outline"
+            >
+              Notification preferences
             </AppButton>
           </View>
 

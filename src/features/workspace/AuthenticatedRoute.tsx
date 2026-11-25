@@ -5,7 +5,10 @@ import { useAuth } from '../../auth/AuthProvider';
 import { AppButton, AppScreen, AppText, InlineError, LoadingState } from '../../components/ui';
 import { themeTokens } from '../../theme/tokens';
 
-export function AuthenticatedRoute({ children }: PropsWithChildren) {
+export function AuthenticatedRoute({
+  children,
+  redirectToHome = true,
+}: PropsWithChildren & { redirectToHome?: boolean }) {
   const { status, workspaces, activeWorkspace, workspacePermissionStatus, logout } = useAuth();
   const [signOutError, setSignOutError] = useState<string | null>(null);
 
@@ -28,14 +31,14 @@ export function AuthenticatedRoute({ children }: PropsWithChildren) {
       router.replace('/workspace-setup');
       return;
     }
-    if (activeWorkspace && workspacePermissionStatus === 'ready') {
+    if (activeWorkspace && workspacePermissionStatus === 'ready' && redirectToHome) {
       router.replace('/(tabs)');
       return;
     }
     if (workspaces.length > 0 || workspacePermissionStatus === 'loading') {
       router.replace('/workspace-select');
     }
-  }, [status, workspaces.length, activeWorkspace, workspacePermissionStatus]);
+  }, [status, workspaces.length, activeWorkspace, workspacePermissionStatus, redirectToHome]);
 
   if (status === 'restoring') {
     return (

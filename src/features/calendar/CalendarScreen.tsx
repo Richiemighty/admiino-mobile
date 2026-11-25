@@ -6,7 +6,6 @@ import { Pressable, RefreshControl, ScrollView, View } from 'react-native';
 import { apiClient, ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
 import { sessionService } from '../../auth/session';
-import { MainAppHeader } from '../../components/navigation/MainAppHeader';
 import {
   AppCard,
   AppScreen,
@@ -193,8 +192,7 @@ export function CalendarScreen() {
   }
 
   return (
-    <AppScreen edges={['right', 'bottom', 'left']} padding="md">
-      <MainAppHeader />
+    <AppScreen padding="md">
       <ScrollView
         contentContainerStyle={{
           width: '100%',

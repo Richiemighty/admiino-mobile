@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { waitFor } from '@testing-library/react-native';
+import { screen, waitFor } from '@testing-library/react-native';
 import { router } from 'expo-router';
 
 import { useAuth } from '../../auth/AuthProvider';
+import { AppText } from '../../components/ui';
 import { renderWithProviders } from '../../test/render';
 import { AuthenticatedRoute } from './AuthenticatedRoute';
 
@@ -51,6 +52,24 @@ describe('P10 authenticated routing', () => {
 
     await renderWithProviders(<AuthenticatedRoute />);
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/(tabs)'));
+  });
+
+  it('keeps an authenticated deep-link destination open when home redirect is disabled', async () => {
+    jest.mocked(useAuth).mockReturnValue({
+      ...initialState,
+      workspaces: [workspace],
+      activeWorkspace: workspace,
+      workspacePermissionStatus: 'ready',
+    } as never);
+
+    await renderWithProviders(
+      <AuthenticatedRoute redirectToHome={false}>
+        <AppText testID="destination">Inbox</AppText>
+      </AuthenticatedRoute>,
+    );
+
+    expect(screen.getByTestId('destination')).toBeTruthy();
+    expect(router.replace).not.toHaveBeenCalledWith('/(tabs)');
   });
 
   it('routes suspended and unavailable-permission states to restricted screens', async () => {

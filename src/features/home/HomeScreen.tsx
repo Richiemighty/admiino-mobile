@@ -221,7 +221,7 @@ export function HomeScreen() {
   }
 
   return (
-    <AppScreen edges={['right', 'bottom', 'left']} padding="md">
+    <AppScreen padding="md">
       <View {...edgeSwipeResponder.panHandlers} style={{ flex: 1 }}>
         <MainAppHeader onProfilePress={() => setDrawerVisible(true)} />
         <ScrollView

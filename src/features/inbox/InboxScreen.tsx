@@ -12,7 +12,6 @@ import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
-import { MainAppHeader } from '../../components/navigation/MainAppHeader';
 import {
   AppButton,
   AppCard,
@@ -688,8 +687,7 @@ function InboxContent({
 
   if (activeCategory === 'requests') {
     return (
-      <AppScreen edges={['right', 'bottom', 'left']} padding="md">
-        <MainAppHeader />
+      <AppScreen padding="md">
         <View style={{ flex: 1, padding: themeTokens.spacing.md }}>
           <View
             style={{
@@ -728,8 +726,7 @@ function InboxContent({
   }
 
   return (
-    <AppScreen edges={['right', 'bottom', 'left']} padding="md">
-      <MainAppHeader />
+    <AppScreen padding="md">
       <View style={{ flex: 1, paddingHorizontal: themeTokens.spacing.md }}>
         <FlatList
           contentContainerStyle={{

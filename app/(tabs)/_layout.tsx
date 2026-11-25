@@ -1,5 +1,5 @@
 import { router, Tabs, useFocusEffect } from 'expo-router';
-import { CalendarDays, Ellipsis, FolderKanban, Home, ListTodo } from 'lucide-react-native';
+import { CalendarDays, Ellipsis, FolderKanban, Home, ListTodo, Users } from 'lucide-react-native';
 import { useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -77,6 +77,14 @@ function WorkspaceTabs() {
           title: 'Tasks',
           tabBarAccessibilityLabel: 'Tasks tab',
           tabBarIcon: ({ color, size }) => <ListTodo color={color} size={size} />,
+        }}
+      />
+      <Tabs.Screen
+        name="teams"
+        options={{
+          title: 'Teams',
+          tabBarAccessibilityLabel: 'Teams tab',
+          tabBarIcon: ({ color, size }) => <Users color={color} size={size} />,
         }}
       />
       <Tabs.Screen

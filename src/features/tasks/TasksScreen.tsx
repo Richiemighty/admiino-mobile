@@ -13,7 +13,6 @@ import {
 
 import { ApiError, ApiNetworkError, ApiTimeoutError } from '../../api';
 import { useAuth } from '../../auth/AuthProvider';
-import { MainAppHeader } from '../../components/navigation/MainAppHeader';
 import {
   AppButton,
   AppCard,
@@ -154,30 +153,40 @@ function TaskCard({
   onWatch: (task: TaskListItem) => void;
 }) {
   const { colors } = useAppTheme();
-  const translateX = useMemo(() => new Animated.Value(open ? -252 : 0), [open]);
+  const visibleActions = useMemo(
+    () =>
+      [
+        task.access?.canEdit ? 'status' : null,
+        task.access?.canEdit && !task.access.readOnly ? 'edit' : null,
+        task.access?.canView ? 'watch' : null,
+      ].filter(Boolean),
+    [task.access],
+  );
+  const revealWidth = Math.max(1, visibleActions.length) * 84;
+  const [translateX] = useState(() => new Animated.Value(0));
   useEffect(() => {
     Animated.spring(translateX, {
-      toValue: open ? -252 : 0,
+      toValue: open ? -revealWidth : 0,
       damping: 22,
       stiffness: 260,
       useNativeDriver: true,
     }).start();
-  }, [open, translateX]);
+  }, [open, revealWidth, translateX]);
   const responder = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_event, gesture) =>
           Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
         onPanResponderMove: (_event, gesture) => {
-          const base = open ? -252 : 0;
-          translateX.setValue(Math.max(-252, Math.min(0, base + gesture.dx)));
+          const base = open ? -revealWidth : 0;
+          translateX.setValue(Math.max(-revealWidth, Math.min(0, base + gesture.dx)));
         },
         onPanResponderRelease: (_event, gesture) => {
           if (gesture.dx < -45) onOpen(task.id);
           else if (gesture.dx > 35) onClose(task.id);
           else {
             Animated.spring(translateX, {
-              toValue: open ? -252 : 0,
+              toValue: open ? -revealWidth : 0,
               damping: 22,
               stiffness: 260,
               useNativeDriver: true,
@@ -185,7 +194,7 @@ function TaskCard({
           }
         },
       }),
-    [open, onClose, onOpen, task.id, translateX],
+    [open, onClose, onOpen, revealWidth, task.id, translateX],
   );
   const dueLabel = getDueDateLabel(task.deadline, new Date(), task.status);
   const related = task.project?.name ?? task.team?.name ?? null;
@@ -202,7 +211,7 @@ function TaskCard({
           right: 0,
           top: 0,
           bottom: 0,
-          width: 252,
+          width: revealWidth,
           flexDirection: 'row',
           backgroundColor: colors.primaryAction,
         }}
@@ -535,8 +544,7 @@ function TasksScreenContent() {
           : 'There are no tasks in this workspace.';
 
   return (
-    <AppScreen edges={['right', 'bottom', 'left']} padding="md">
-      <MainAppHeader />
+    <AppScreen padding="md">
       <View style={{ paddingHorizontal: themeTokens.spacing.md, flex: 1 }}>
         <FlatList
           contentContainerStyle={{
