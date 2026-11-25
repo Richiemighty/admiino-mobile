@@ -406,11 +406,18 @@ describe('P12 task lists, detail, and forms', () => {
     const row = await screen.findByTestId('task-swipeable-workspace-1-Access pending');
     expect(row.props.dragOffsetFromRight).toBe(-16);
     expect(await screen.findByLabelText('Edit Access pending')).toBeTruthy();
-    expect(taskService.getTask).toHaveBeenCalledWith(
-      'workspace-1-Access pending',
-      'workspace-1',
-      expect.any(AbortSignal),
-    );
+    expect(taskService.getTask).toHaveBeenCalledWith('workspace-1-Access pending', 'workspace-1');
+  });
+
+  it('does not render an Unavailable swipe tile when access is denied', async () => {
+    jest.mocked(taskService.getTask).mockRejectedValueOnce(new ApiError('Access denied', 403));
+    jest.mocked(taskService.listTasks).mockResolvedValue(page('workspace-1', 'Restricted task'));
+
+    await renderWithProviders(<TasksScreen />);
+
+    expect(await screen.findByText('Restricted task')).toBeTruthy();
+    expect(screen.queryByText('Unavailable')).toBeNull();
+    expect(screen.queryByLabelText('Edit Restricted task')).toBeNull();
   });
 
   it('hides status and edit actions when task access is read-only', async () => {

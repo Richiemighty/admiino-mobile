@@ -54,7 +54,7 @@ import {
   taskService,
   type TaskStatus,
 } from './service';
-import { getTaskSwipeRevealWidth } from './taskSwipe';
+import { getTaskSwipeActions, getTaskSwipeRevealWidth } from './taskSwipe';
 
 type StatusFilter = TaskStatus | '';
 type PriorityFilter = TaskPriority | '';
@@ -94,6 +94,29 @@ function requestErrorMessage(error: unknown): string {
   if (error instanceof ApiError && error.status === 423)
     return 'This workspace is temporarily suspended.';
   return 'Tasks could not be loaded. Please try again.';
+}
+
+function isTransientTaskAccessError(error: unknown): boolean {
+  return (
+    error instanceof ApiNetworkError ||
+    error instanceof ApiTimeoutError ||
+    (error instanceof ApiError && (error.status === 429 || error.status >= 500))
+  );
+}
+
+function traceTaskAccess(
+  taskId: string,
+  operation: 'access' | 'watchers',
+  outcome: 'confirmed' | 'denied' | 'failed' | 'retrying',
+  error?: unknown,
+): void {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return;
+  console.info('[Admiino task access]', {
+    taskId,
+    operation,
+    outcome,
+    status: error instanceof ApiError ? error.status : null,
+  });
 }
 
 function FilterChip({
@@ -175,7 +198,6 @@ function TaskCard({
   onOpen,
   onClose,
   onWatch,
-  accessPending,
   watchKnown,
   watchLoading,
 }: {
@@ -185,13 +207,14 @@ function TaskCard({
   onOpen: (taskId: string, methods: SwipeableMethods) => void;
   onClose: (taskId: string) => void;
   onWatch: (task: TaskListItem) => void;
-  accessPending: boolean;
   watchKnown: boolean;
   watchLoading: boolean;
 }) {
   const { colors } = useAppTheme();
   const swipeableRef = useRef<SwipeableMethods | null>(null);
-  const revealWidth = accessPending ? 84 : getTaskSwipeRevealWidth(task.access);
+  const swipeActions = getTaskSwipeActions(task.access);
+  const revealWidth = getTaskSwipeRevealWidth(task.access);
+  const canOpenActions = swipeActions.length > 0;
   const dueLabel = getDueDateLabel(task.deadline, new Date(), task.status);
   const related = task.project?.name ?? task.team?.name ?? null;
   const assignees =
@@ -208,23 +231,9 @@ function TaskCard({
         overshootRight={false}
         renderRightActions={(_progress, _translation, methods) => {
           swipeableRef.current = methods;
+          if (!canOpenActions) return null;
           return (
             <View style={{ width: revealWidth, flexDirection: 'row' }}>
-              {accessPending ? (
-                <View
-                  accessibilityLabel={`Task actions unavailable for ${task.title}`}
-                  style={{
-                    flex: 1,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: colors.surfaceSubtle,
-                  }}
-                >
-                  <AppText tone="secondary" variant="caption">
-                    Unavailable
-                  </AppText>
-                </View>
-              ) : null}
               {task.access?.canEdit ? (
                 <Pressable
                   accessibilityLabel={`Change status for ${task.title}`}
@@ -310,7 +319,7 @@ function TaskCard({
           if (direction === SwipeDirection.LEFT) onClose(task.id);
         }}
         onSwipeableOpen={(direction) => {
-          if (direction === SwipeDirection.LEFT && swipeableRef.current) {
+          if (canOpenActions && direction === SwipeDirection.LEFT && swipeableRef.current) {
             onOpen(task.id, swipeableRef.current);
           }
         }}
@@ -318,13 +327,17 @@ function TaskCard({
       >
         <AppCard
           accessibilityLabel={`Open task ${task.title}`}
-          accessibilityActions={[
-            { name: 'activate', label: `Open task actions for ${task.title}` },
-          ]}
+          accessibilityActions={
+            canOpenActions
+              ? [{ name: 'activate', label: `Open task actions for ${task.title}` }]
+              : []
+          }
           onAccessibilityAction={(event) => {
-            if (event.nativeEvent.actionName === 'activate') onActions(task);
+            if (canOpenActions && event.nativeEvent.actionName === 'activate') onActions(task);
           }}
-          onLongPress={() => onActions(task)}
+          onLongPress={() => {
+            if (canOpenActions) onActions(task);
+          }}
           onPress={() => router.push(`/tasks/${encodeURIComponent(task.id)}`)}
           padding="sm"
           style={{
@@ -427,6 +440,11 @@ function TasksScreenContent() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [pageData, setPageData] = useState<ScopedTaskPage | null>(null);
   const [visibleTaskIds, setVisibleTaskIds] = useState<string[]>([]);
+  const accessPrefetchContext = useRef<{
+    key: string;
+    active: boolean;
+    requested: Set<string>;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -562,7 +580,16 @@ function TasksScreenContent() {
 
   useEffect(() => {
     if (!workspaceId || !userId || !currentPage?.tasks.length) return undefined;
-    const controller = new AbortController();
+    const contextKey = `${workspaceId}:${userId}:${listKey}`;
+    if (accessPrefetchContext.current?.key !== contextKey) {
+      if (accessPrefetchContext.current) accessPrefetchContext.current.active = false;
+      accessPrefetchContext.current = {
+        key: contextKey,
+        active: true,
+        requested: new Set(),
+      };
+    }
+    const context = accessPrefetchContext.current;
     const visibleIndexes = visibleTaskIds
       .map((id) => currentPage.tasks.findIndex((task) => task.id === id))
       .filter((index) => index >= 0);
@@ -571,70 +598,107 @@ function TasksScreenContent() {
       start,
       Math.min(currentPage.tasks.length, start + 16),
     );
-    const prefetch = async () => {
-      let cursor = 0;
-      const worker = async () => {
-        while (cursor < visibleTasks.length && !controller.signal.aborted) {
-          const task = visibleTasks[cursor++];
-          const watcherKey = cacheKeys.watchers(userId, workspaceId, task.id);
-          const accessKey = cacheKeys.task(userId, workspaceId, task.id);
-          const cachedWatcher = serverCache.get<TaskPerson[]>(watcherKey);
-          const cachedDetails = serverCache.get<TaskDetails>(accessKey);
-          if (task.access) {
-            setTaskAccessById((current) => ({ ...current, [task.id]: task.access! }));
-          } else if (cachedDetails?.access) {
-            setTaskAccessById((current) => ({ ...current, [task.id]: cachedDetails.access! }));
-          }
-          if (cachedWatcher) {
-            const watching = cachedWatcher.some((watcher) => watcher.id === userId);
-            setWatchStateByTask((current) => ({ ...current, [task.id]: watching }));
-            setWatchingTaskIds((current) => {
-              const next = new Set(current);
-              if (watching) next.add(task.id);
-              else next.delete(task.id);
-              return next;
-            });
-          }
-          try {
-            if (!task.access && !cachedDetails) {
-              const details = await serverCache.fetch(
-                accessKey,
-                () => taskService.getTask(task.id, workspaceId, controller.signal),
-                { staleTime: cachePolicy.taskDetails },
-              );
-              if (!controller.signal.aborted) {
-                setTaskAccessById((current) => ({ ...current, [task.id]: details.access }));
-              }
-            }
-          } catch {
-            // Access prefetch failure must not grant actions or block the row.
-          }
-          try {
-            const watchers = await serverCache.fetch(
-              watcherKey,
-              () => taskService.getWatchers(task.id, workspaceId, controller.signal),
-              { staleTime: cachePolicy.watchers },
-            );
-            if (controller.signal.aborted) return;
-            const watching = watchers.some((watcher) => watcher.id === userId);
-            serverCache.set(watcherKey, watchers);
-            setWatchStateByTask((current) => ({ ...current, [task.id]: watching }));
-            setWatchingTaskIds((current) => {
-              const next = new Set(current);
-              if (watching) next.add(task.id);
-              else next.delete(task.id);
-              return next;
-            });
-          } catch {
-            // A failed prefetch must not be interpreted as "not watching".
-          }
-        }
-      };
-      await Promise.all([worker(), worker(), worker()]);
+    const applyWatcherState = (taskId: string, watchers: TaskPerson[]) => {
+      if (!context.active || accessPrefetchContext.current !== context) return;
+      const watching = watchers.some((watcher) => watcher.id === userId);
+      setWatchStateByTask((current) => ({ ...current, [taskId]: watching }));
+      setWatchingTaskIds((current) => {
+        const next = new Set(current);
+        if (watching) next.add(taskId);
+        else next.delete(taskId);
+        return next;
+      });
     };
-    void prefetch();
-    return () => controller.abort();
-  }, [currentPage?.tasks, userId, visibleTaskIds, workspaceId]);
+    const scheduleAccess = (task: TaskListItem, attempt = 0) => {
+      const requestKey = `access:${task.id}`;
+      if (!context.active || context.requested.has(requestKey)) return;
+      context.requested.add(requestKey);
+      const accessKey = cacheKeys.task(userId, workspaceId, task.id);
+      const cached = serverCache.get<TaskDetails>(accessKey);
+      const accessRequest =
+        task.access || (cached && serverCache.isFresh(accessKey, cachePolicy.taskDetails))
+          ? Promise.resolve(task.access ?? cached?.access)
+          : serverCache
+              .fetch(accessKey, () => taskService.getTask(task.id, workspaceId), {
+                staleTime: cachePolicy.taskDetails,
+              })
+              .then((details) => details.access);
+      void accessRequest
+        .then((access) => {
+          if (!access || !context.active || accessPrefetchContext.current !== context) return;
+          setTaskAccessById((current) => ({ ...current, [task.id]: access }));
+          traceTaskAccess(task.id, 'access', 'confirmed');
+        })
+        .catch((error: unknown) => {
+          traceTaskAccess(
+            task.id,
+            'access',
+            isTransientTaskAccessError(error) && attempt < 2 ? 'retrying' : 'failed',
+            error,
+          );
+          if (isTransientTaskAccessError(error) && attempt < 2) {
+            setTimeout(
+              () => {
+                if (context.active) {
+                  context.requested.delete(requestKey);
+                  scheduleAccess(task, attempt + 1);
+                }
+              },
+              500 * (attempt + 1),
+            );
+          }
+        });
+    };
+    const scheduleWatchers = (task: TaskListItem, attempt = 0) => {
+      const requestKey = `watchers:${task.id}`;
+      if (!context.active || context.requested.has(requestKey)) return;
+      context.requested.add(requestKey);
+      const watcherKey = cacheKeys.watchers(userId, workspaceId, task.id);
+      const cached = serverCache.get<TaskPerson[]>(watcherKey);
+      const watcherRequest =
+        cached && serverCache.isFresh(watcherKey, cachePolicy.watchers)
+          ? Promise.resolve(cached)
+          : serverCache.fetch(watcherKey, () => taskService.getWatchers(task.id, workspaceId), {
+              staleTime: cachePolicy.watchers,
+            });
+      void watcherRequest
+        .then((watchers) => {
+          applyWatcherState(task.id, watchers);
+          traceTaskAccess(task.id, 'watchers', 'confirmed');
+        })
+        .catch((error: unknown) => {
+          traceTaskAccess(
+            task.id,
+            'watchers',
+            isTransientTaskAccessError(error) && attempt < 2 ? 'retrying' : 'failed',
+            error,
+          );
+          if (isTransientTaskAccessError(error) && attempt < 2) {
+            setTimeout(
+              () => {
+                if (context.active) {
+                  context.requested.delete(requestKey);
+                  scheduleWatchers(task, attempt + 1);
+                }
+              },
+              500 * (attempt + 1),
+            );
+          }
+        });
+    };
+    for (const task of visibleTasks) {
+      if (!task.access) scheduleAccess(task);
+      scheduleWatchers(task);
+    }
+    return undefined;
+  }, [currentPage?.tasks, listKey, userId, visibleTaskIds, workspaceId]);
+
+  useEffect(
+    () => () => {
+      if (accessPrefetchContext.current) accessPrefetchContext.current.active = false;
+    },
+    [listKey, userId, workspaceId],
+  );
 
   const loadMore = async () => {
     if (
@@ -1056,7 +1120,6 @@ function TasksScreenContent() {
                   ? item
                   : { ...item, access: taskAccessById[item.id] }
               }
-              accessPending={!item.access && !taskAccessById[item.id]}
               watching={watchingTaskIds.has(item.id)}
               watchKnown={
                 watchStateByTask[item.id] !== undefined && watchStateByTask[item.id] !== null
