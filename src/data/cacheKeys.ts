@@ -11,6 +11,10 @@ export const cacheKeys = {
     cacheKey('workspace', workspaceId, 'user', userId, 'home'),
   projects: (userId: string, workspaceId: string, search: string) =>
     cacheKey('workspace', workspaceId, 'user', userId, 'projects', search),
+  project: (userId: string, workspaceId: string, projectId: string) =>
+    cacheKey('workspace', workspaceId, 'user', userId, 'project', projectId),
+  projectFiles: (userId: string, workspaceId: string, projectId: string, folderId?: string) =>
+    cacheKey('workspace', workspaceId, 'user', userId, 'project-files', projectId, folderId),
   teams: (userId: string, workspaceId: string) =>
     cacheKey('workspace', workspaceId, 'user', userId, 'teams'),
   inbox: (userId: string, workspaceId: string, filter: string) =>

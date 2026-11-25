@@ -29,7 +29,7 @@ import {
   UserAvatar,
 } from '../../components/ui';
 import { cacheKeys } from '../../data/cacheKeys';
-import { serverCache } from '../../data/serverCache';
+import { cachePolicy, serverCache } from '../../data/serverCache';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { SecureImagePreview } from '../files/SecureImagePreview';
@@ -386,8 +386,15 @@ export function TaskDetailsScreen({
       setStatusError(null);
       setStatusMessage(null);
       setTeamLeadError(null);
-      void taskService
-        .getTask(taskId, workspaceId, controller.signal)
+      const requestTask = () => taskService.getTask(taskId, workspaceId, controller.signal);
+      void (
+        key
+          ? serverCache.fetch(key, requestTask, {
+              staleTime: cachePolicy.taskDetails,
+              force: requestAttempt > 0,
+            })
+          : requestTask()
+      )
         .then((details) => {
           if (controller.signal.aborted || requestAttempt !== retry) return;
           const next = { workspaceId, taskId, details };
@@ -432,6 +439,12 @@ export function TaskDetailsScreen({
         })
         .catch(async (requestError: unknown) => {
           if (controller.signal.aborted || requestAttempt !== retry) return;
+          if (
+            cached &&
+            !(requestError instanceof ApiError && [401, 423].includes(requestError.status))
+          ) {
+            return;
+          }
           if (requestError instanceof ApiError && requestError.status === 401) {
             try {
               await logout();

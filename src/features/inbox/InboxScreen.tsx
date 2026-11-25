@@ -415,12 +415,16 @@ function InboxContent({
         setLoading(false);
       }
       try {
-        const page = await inboxService.listNotifications(workspaceId, {
-          limit: NOTIFICATION_PAGE_SIZE,
-          offset: 0,
-          unreadOnly: filter === 'unread',
-          signal: controller.signal,
-        });
+        const request = () =>
+          inboxService.listNotifications(workspaceId, {
+            limit: NOTIFICATION_PAGE_SIZE,
+            offset: 0,
+            unreadOnly: filter === 'unread',
+            signal: controller.signal,
+          });
+        const page = key
+          ? await serverCache.fetch(key, request, { staleTime: 30_000, force: isRefresh })
+          : await request();
         if (controller.signal.aborted || activeWorkspace.current !== workspaceId) return;
         setLoaded({
           workspaceId,
@@ -442,7 +446,7 @@ function InboxContent({
       } catch (requestError) {
         if (controller.signal.aborted || activeWorkspace.current !== workspaceId) return;
         const handled = await handleFatal(requestError);
-        if (!handled) setError(errorMessage(requestError));
+        if (!handled && !cached) setError(errorMessage(requestError));
       } finally {
         if (!controller.signal.aborted && activeWorkspace.current === workspaceId) {
           setLoading(false);

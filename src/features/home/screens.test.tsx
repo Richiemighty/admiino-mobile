@@ -127,11 +127,10 @@ describe('P11 Home, Global Search, and More screens', () => {
     );
   });
 
-  it('opens Home task rows at task details and reloads the summary on refocus', async () => {
+  it('opens Home task rows and keeps the cached summary on refocus', async () => {
     jest
       .mocked(homeService.getDashboardData)
-      .mockResolvedValueOnce(dashboardFor('workspace-1', 'Prepare quarterly plan'))
-      .mockResolvedValueOnce(dashboardFor('workspace-1', 'Recently updated task'));
+      .mockResolvedValueOnce(dashboardFor('workspace-1', 'Prepare quarterly plan'));
     await renderWithProviders(<HomeScreen />);
     expect(await screen.findAllByText('Prepare quarterly plan')).not.toHaveLength(0);
 
@@ -143,8 +142,8 @@ describe('P11 Home, Global Search, and More screens', () => {
     await act(async () => {
       triggerFocusEffectsForTest();
     });
-    expect(await screen.findAllByText('Recently updated task')).not.toHaveLength(0);
-    expect(homeService.getDashboardData).toHaveBeenCalledTimes(2);
+    expect(await screen.findAllByText('Prepare quarterly plan')).not.toHaveLength(0);
+    expect(homeService.getDashboardData).toHaveBeenCalledTimes(1);
   });
 
   it('opens the profile drawer and navigates to Tasks', async () => {

@@ -7,6 +7,8 @@ type Entry<T> = {
 
 const entries = new Map<CacheKey, Entry<unknown>>();
 const inFlight = new Map<CacheKey, Promise<unknown>>();
+const keyEpochs = new Map<CacheKey, number>();
+let authenticatedEpoch = 0;
 
 export const cachePolicy = {
   taskList: 45_000,
@@ -62,12 +64,18 @@ export const serverCache = {
     }
     const existing = inFlight.get(key) as Promise<T> | undefined;
     if (existing) return existing;
+    const epoch = keyEpochs.get(key) ?? 0;
+    const accountEpoch = authenticatedEpoch;
     const promise = request()
       .then((value) => {
-        this.set(key, value);
+        if ((keyEpochs.get(key) ?? 0) === epoch && authenticatedEpoch === accountEpoch) {
+          this.set(key, value);
+        }
         return value;
       })
-      .finally(() => inFlight.delete(key));
+      .finally(() => {
+        if (inFlight.get(key) === promise) inFlight.delete(key);
+      });
     inFlight.set(key, promise);
     return promise;
   },
@@ -80,8 +88,17 @@ export const serverCache = {
   },
 
   invalidate(prefix: string) {
-    for (const key of entries.keys())
-      if (key === prefix || key.startsWith(`${prefix}:`)) entries.delete(key);
+    const affected = new Set<CacheKey>();
+    for (const key of entries.keys()) {
+      if (key === prefix || key.startsWith(`${prefix}:`)) affected.add(key);
+    }
+    for (const key of inFlight.keys()) {
+      if (key === prefix || key.startsWith(`${prefix}:`)) affected.add(key);
+    }
+    for (const key of affected) {
+      entries.delete(key);
+      keyEpochs.set(key, (keyEpochs.get(key) ?? 0) + 1);
+    }
   },
 
   clearWorkspace(workspaceId: string) {
@@ -92,13 +109,17 @@ export const serverCache = {
   },
 
   clearAuthenticated() {
+    authenticatedEpoch += 1;
     entries.clear();
     inFlight.clear();
+    keyEpochs.clear();
   },
 
   clearForTests() {
+    authenticatedEpoch += 1;
     entries.clear();
     inFlight.clear();
+    keyEpochs.clear();
   },
 };
 

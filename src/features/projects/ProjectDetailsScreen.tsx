@@ -22,6 +22,8 @@ import {
   LoadingState,
   UserAvatar,
 } from '../../components/ui';
+import { cacheKeys } from '../../data/cacheKeys';
+import { cachePolicy, serverCache } from '../../data/serverCache';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { SecureImagePreview } from '../files/SecureImagePreview';
@@ -180,7 +182,8 @@ export function ProjectDetailsScreen({
   initialSection?: string;
   returnToInbox?: boolean;
 }) {
-  const { activeWorkspace, permissions, status, workspacePermissionStatus, logout } = useAuth();
+  const { activeWorkspace, permissions, status, user, workspacePermissionStatus, logout } =
+    useAuth();
   const { colors } = useAppTheme();
   const returnToProjectList = () => router.replace(returnToInbox ? '/inbox' : '/(tabs)/projects');
   const workspaceId = activeWorkspace?.companyId ?? null;
@@ -247,10 +250,22 @@ export function ProjectDetailsScreen({
       if (!isReady || !workspaceId || !projectId) return undefined;
       const controller = new AbortController();
       const requestRetry = retry;
-      setLoading(true);
+      const key = user?.id ? cacheKeys.project(user.id, workspaceId, projectId) : null;
+      const cached = key ? serverCache.get<LoadedProject>(key) : undefined;
+      if (cached) {
+        setLoaded(cached);
+        setLoading(false);
+      } else setLoading(true);
       setLoadError(null);
-      void projectService
-        .getProject(projectId, workspaceId, controller.signal)
+      void (
+        key
+          ? serverCache.fetch(
+              `${key}:record`,
+              () => projectService.getProject(projectId, workspaceId, controller.signal),
+              { staleTime: cachePolicy.projects, force: retry > 0 },
+            )
+          : projectService.getProject(projectId, workspaceId, controller.signal)
+      )
         .then(async (result) => {
           if (controller.signal.aborted) return;
           const [tasksResult, membersResult] = await Promise.allSettled([
@@ -267,7 +282,7 @@ export function ProjectDetailsScreen({
               throw result.reason;
             }
           }
-          setLoaded({
+          const next = {
             workspaceId,
             projectId,
             project: result,
@@ -279,11 +294,19 @@ export function ProjectDetailsScreen({
               membersResult.status === 'rejected'
                 ? projectMemberErrorMessage(membersResult.reason)
                 : null,
-          });
+          };
+          if (key) serverCache.set(key, next);
+          setLoaded(next);
         })
         .catch(async (requestError: unknown) => {
           if (controller.signal.aborted || requestRetry !== retry) return;
-          setLoaded(null);
+          if (
+            cached &&
+            !(requestError instanceof ApiError && [401, 423].includes(requestError.status))
+          ) {
+            return;
+          }
+          if (!cached) setLoaded(null);
           if (requestError instanceof ApiError && requestError.status === 401) {
             try {
               await logoutRef.current();
@@ -309,17 +332,32 @@ export function ProjectDetailsScreen({
           if (!controller.signal.aborted && requestRetry === retry) setLoading(false);
         });
       return () => controller.abort();
-    }, [isReady, projectId, retry, workspaceId]),
+    }, [isReady, projectId, retry, user, workspaceId]),
   );
 
   useFocusEffect(
     useCallback(() => {
       if (!isReady || !workspaceId || !projectId || section !== 'files') return undefined;
       const controller = new AbortController();
-      setFilesLoading(true);
+      const key = user?.id
+        ? cacheKeys.projectFiles(user.id, workspaceId, projectId, folderId)
+        : null;
+      const cached = key ? serverCache.get<ProjectFileListing>(key) : undefined;
+      if (cached) {
+        setLoadedFiles({ workspaceId, projectId, folderId, retry: fileRetry, listing: cached });
+        setFilesLoading(false);
+      } else setFilesLoading(true);
       setFileError(null);
-      void projectService
-        .getProjectFiles(projectId, workspaceId, folderId, controller.signal)
+      void (
+        key
+          ? serverCache.fetch(
+              key,
+              () =>
+                projectService.getProjectFiles(projectId, workspaceId, folderId, controller.signal),
+              { staleTime: cachePolicy.projects, force: fileRetry > 0 },
+            )
+          : projectService.getProjectFiles(projectId, workspaceId, folderId, controller.signal)
+      )
         .then((listing) => {
           if (!controller.signal.aborted) {
             setLoadedFiles({ workspaceId, projectId, folderId, retry: fileRetry, listing });
@@ -327,7 +365,13 @@ export function ProjectDetailsScreen({
         })
         .catch(async (requestError: unknown) => {
           if (controller.signal.aborted) return;
-          setLoadedFiles(null);
+          if (
+            cached &&
+            !(requestError instanceof ApiError && [401, 423].includes(requestError.status))
+          ) {
+            return;
+          }
+          if (!cached) setLoadedFiles(null);
           if (requestError instanceof ApiError && requestError.status === 401) {
             try {
               await logoutRef.current();
@@ -345,7 +389,7 @@ export function ProjectDetailsScreen({
           if (!controller.signal.aborted) setFilesLoading(false);
         });
       return () => controller.abort();
-    }, [fileRetry, folderId, isReady, projectId, section, workspaceId]),
+    }, [fileRetry, folderId, isReady, projectId, section, user, workspaceId]),
   );
 
   if (!isReady) {

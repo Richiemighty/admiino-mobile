@@ -255,8 +255,16 @@ export function ProjectListScreen() {
         setLoading(false);
       } else setLoading(true);
       setError(null);
-      void projectService
-        .listProjects(workspaceId, { search: debouncedQuery, signal: controller.signal })
+      const request = () =>
+        projectService.listProjects(workspaceId, {
+          search: debouncedQuery,
+          signal: controller.signal,
+        });
+      void (
+        key
+          ? serverCache.fetch(key, request, { staleTime: 60_000, force: requestRetry > 0 })
+          : request()
+      )
         .then((projects) => {
           if (!controller.signal.aborted && requestRetry === retry) {
             if (key) serverCache.set(key, projects);
@@ -265,6 +273,12 @@ export function ProjectListScreen() {
         })
         .catch(async (requestError: unknown) => {
           if (controller.signal.aborted || requestRetry !== retry) return;
+          if (
+            cached &&
+            !(requestError instanceof ApiError && [401, 423].includes(requestError.status))
+          ) {
+            return;
+          }
           if (requestError instanceof ApiError && requestError.status === 401) {
             try {
               await logoutRef.current();

@@ -34,8 +34,8 @@ export function TeamsScreen() {
         setLoading(false);
       } else setLoading(true);
       setError(null);
-      void projectService
-        .listTeams(workspaceId, controller.signal)
+      const request = () => projectService.listTeams(workspaceId, controller.signal);
+      void (key ? serverCache.fetch(key, request, { staleTime: 60_000 }) : request())
         .then((items) => {
           if (!controller.signal.aborted) {
             const next = items.map(({ id, name }) => ({ id, name }));
@@ -45,6 +45,7 @@ export function TeamsScreen() {
         })
         .catch((requestError: unknown) => {
           if (controller.signal.aborted) return;
+          if (cached) return;
           setError(
             requestError instanceof ApiError && requestError.status === 403
               ? 'You do not have permission to view teams in this workspace.'

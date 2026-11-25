@@ -25,7 +25,7 @@ import {
   LoadingState,
 } from '../../components/ui';
 import { cacheKeys } from '../../data/cacheKeys';
-import { serverCache } from '../../data/serverCache';
+import { cachePolicy, serverCache } from '../../data/serverCache';
 import { useAppTheme } from '../../theme';
 import { themeTokens } from '../../theme/tokens';
 import { getDueDateLabel, getDueSoonTasks, getNeedsAttentionTasks } from './dashboard-utils';
@@ -180,7 +180,13 @@ export function HomeScreen() {
             setLoading(true);
             setErrorState(null);
           }
-          return homeService.getDashboardData(workspaceId, controller.signal);
+          const request = () => homeService.getDashboardData(workspaceId, controller.signal);
+          return dashboardKey
+            ? serverCache.fetch(dashboardKey, request, {
+                staleTime: cachePolicy.home,
+                force: requestAttempt > 0,
+              })
+            : request();
         })
         .then((response) => {
           if (!controller.signal.aborted && requestAttempt === loadAttempt && response) {
@@ -190,6 +196,12 @@ export function HomeScreen() {
         })
         .catch(async (requestError: unknown) => {
           if (controller.signal.aborted || requestAttempt !== loadAttempt) return;
+          if (
+            cached &&
+            !(requestError instanceof ApiError && [401, 423].includes(requestError.status))
+          ) {
+            return;
+          }
           try {
             const wasRedirected = await routeForAccessError(requestError, () =>
               logoutRef.current(),

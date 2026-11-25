@@ -10,7 +10,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -60,6 +60,20 @@ type PriorityFilter = TaskPriority | '';
 interface ScopedTaskPage extends TaskPage {
   workspaceId: string;
   key: string;
+}
+
+function mergeTaskPages(
+  previous: ScopedTaskPage | undefined,
+  next: ScopedTaskPage,
+): ScopedTaskPage {
+  if (!previous || previous.key !== next.key) return next;
+  const seen = new Set(next.tasks.map((task) => task.id));
+  const retained = previous.tasks.slice(next.tasks.length).filter((task) => {
+    if (seen.has(task.id)) return false;
+    seen.add(task.id);
+    return true;
+  });
+  return { ...next, tasks: [...next.tasks, ...retained].slice(0, next.total) };
 }
 
 function labelFor(value: string | null | undefined): string {
@@ -159,7 +173,6 @@ function TaskCard({
   onOpen,
   onClose,
   onWatch,
-  onAccessNeeded,
   accessPending,
   watchKnown,
   watchLoading,
@@ -170,7 +183,6 @@ function TaskCard({
   onOpen: (taskId: string, methods: SwipeableMethods) => void;
   onClose: (taskId: string) => void;
   onWatch: (task: TaskListItem) => void;
-  onAccessNeeded: (task: TaskListItem) => void;
   accessPending: boolean;
   watchKnown: boolean;
   watchLoading: boolean;
@@ -198,7 +210,7 @@ function TaskCard({
             <View style={{ width: revealWidth, flexDirection: 'row' }}>
               {accessPending ? (
                 <View
-                  accessibilityLabel={`Checking actions for ${task.title}`}
+                  accessibilityLabel={`Task actions unavailable for ${task.title}`}
                   style={{
                     flex: 1,
                     alignItems: 'center',
@@ -206,8 +218,9 @@ function TaskCard({
                     backgroundColor: colors.surfaceSubtle,
                   }}
                 >
-                  <ActivityIndicator color={colors.primaryAction} size="small" />
-                  <AppText variant="caption">Checking…</AppText>
+                  <AppText tone="secondary" variant="caption">
+                    Unavailable
+                  </AppText>
                 </View>
               ) : null}
               {task.access?.canEdit ? (
@@ -293,9 +306,6 @@ function TaskCard({
         }}
         onSwipeableClose={(direction) => {
           if (direction === SwipeDirection.LEFT) onClose(task.id);
-        }}
-        onSwipeableOpenStartDrag={() => {
-          if (!task.access) onAccessNeeded(task);
         }}
         onSwipeableOpen={(direction) => {
           if (direction === SwipeDirection.LEFT && swipeableRef.current) {
@@ -409,12 +419,12 @@ function TasksScreenContent() {
   const [watchingTaskIds, setWatchingTaskIds] = useState<Set<string>>(new Set());
   const [watchStateByTask, setWatchStateByTask] = useState<Record<string, boolean | null>>({});
   const [taskAccessById, setTaskAccessById] = useState<Record<string, TaskAccess>>({});
-  const [accessLoadingId, setAccessLoadingId] = useState<string | null>(null);
   const [watchLoadingId, setWatchLoadingId] = useState<string | null>(null);
   const openSwipeable = useRef<{ taskId: string; methods: SwipeableMethods } | null>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [pageData, setPageData] = useState<ScopedTaskPage | null>(null);
+  const [visibleTaskIds, setVisibleTaskIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -460,12 +470,14 @@ function TasksScreenContent() {
       activeRequest.current?.abort();
       moreRequest.current?.abort();
       activeRequest.current = controller;
+      const previousListKey = lastLoadedListKey.current;
+      lastLoadedListKey.current = listKey;
       const cached = tasksCacheKey ? serverCache.get<ScopedTaskPage>(tasksCacheKey) : undefined;
       if (cached && cached.workspaceId === workspaceId && cached.key === listKey) {
         setPageData(cached);
         setLoading(false);
         if (
-          lastLoadedListKey.current === listKey &&
+          previousListKey === listKey &&
           serverCache.isFresh(tasksCacheKey ?? '', cachePolicy.taskList) &&
           retry === 0
         ) {
@@ -476,8 +488,8 @@ function TasksScreenContent() {
       }
       setLoadingMore(false);
       if (!cached) setError(null);
-      void taskService
-        .listTasks(
+      const requestPage = () =>
+        taskService.listTasks(
           workspaceId,
           {
             relation: activeRelation,
@@ -488,12 +500,22 @@ function TasksScreenContent() {
             canViewAllTasks,
           },
           controller.signal,
-        )
+        );
+      void (
+        tasksCacheKey
+          ? serverCache.fetch(tasksCacheKey, requestPage, {
+              staleTime: cachePolicy.taskList,
+              force: retry > 0 || previousListKey !== listKey,
+            })
+          : requestPage()
+      )
         .then((response) => {
           if (controller.signal.aborted || requestAttempt !== retry) return;
-          const nextPage = { ...response, workspaceId, key: listKey };
+          const nextPage = mergeTaskPages(
+            tasksCacheKey ? serverCache.get<ScopedTaskPage>(tasksCacheKey) : undefined,
+            { ...response, workspaceId, key: listKey },
+          );
           if (tasksCacheKey) serverCache.set(tasksCacheKey, nextPage);
-          lastLoadedListKey.current = listKey;
           setPageData(nextPage);
         })
         .catch(async (requestError: unknown) => {
@@ -511,7 +533,7 @@ function TasksScreenContent() {
             router.replace('/workspace-suspended');
             return;
           }
-          setError(requestErrorMessage(requestError));
+          if (!cached) setError(requestErrorMessage(requestError));
         })
         .finally(() => {
           if (!controller.signal.aborted && requestAttempt === retry) setLoading(false);
@@ -539,29 +561,60 @@ function TasksScreenContent() {
   useEffect(() => {
     if (!workspaceId || !userId || !currentPage?.tasks.length) return undefined;
     const controller = new AbortController();
-    const visibleTasks = currentPage.tasks.slice(0, 12);
+    const visibleIndexes = visibleTaskIds
+      .map((id) => currentPage.tasks.findIndex((task) => task.id === id))
+      .filter((index) => index >= 0);
+    const start = visibleIndexes.length ? Math.min(...visibleIndexes) : 0;
+    const visibleTasks = currentPage.tasks.slice(
+      start,
+      Math.min(currentPage.tasks.length, start + 16),
+    );
     const prefetch = async () => {
       let cursor = 0;
       const worker = async () => {
         while (cursor < visibleTasks.length && !controller.signal.aborted) {
           const task = visibleTasks[cursor++];
-          const key = cacheKeys.watchers(userId, workspaceId, task.id);
-          const cached = serverCache.get<boolean>(key);
-          if (cached !== undefined) {
-            setWatchStateByTask((current) => ({ ...current, [task.id]: cached }));
+          const watcherKey = cacheKeys.watchers(userId, workspaceId, task.id);
+          const accessKey = cacheKeys.task(userId, workspaceId, task.id);
+          const cachedWatcher = serverCache.get<boolean>(watcherKey);
+          const cachedDetails = serverCache.get<{ access?: TaskAccess }>(accessKey);
+          if (task.access) {
+            setTaskAccessById((current) => ({ ...current, [task.id]: task.access! }));
+          } else if (cachedDetails?.access) {
+            setTaskAccessById((current) => ({ ...current, [task.id]: cachedDetails.access! }));
+          }
+          if (cachedWatcher !== undefined) {
+            setWatchStateByTask((current) => ({ ...current, [task.id]: cachedWatcher }));
             setWatchingTaskIds((current) => {
               const next = new Set(current);
-              if (cached) next.add(task.id);
+              if (cachedWatcher) next.add(task.id);
               else next.delete(task.id);
               return next;
             });
-            continue;
           }
           try {
-            const watchers = await taskService.getWatchers(task.id, workspaceId, controller.signal);
+            if (!task.access && !cachedDetails) {
+              const details = await serverCache.fetch(
+                accessKey,
+                () => taskService.getTask(task.id, workspaceId, controller.signal),
+                { staleTime: cachePolicy.taskDetails },
+              );
+              if (!controller.signal.aborted) {
+                setTaskAccessById((current) => ({ ...current, [task.id]: details.access }));
+              }
+            }
+          } catch {
+            // Access prefetch failure must not grant actions or block the row.
+          }
+          try {
+            const watchers = await serverCache.fetch(
+              watcherKey,
+              () => taskService.getWatchers(task.id, workspaceId, controller.signal),
+              { staleTime: cachePolicy.watchers },
+            );
             if (controller.signal.aborted) return;
             const watching = watchers.some((watcher) => watcher.id === userId);
-            serverCache.set(key, watching);
+            serverCache.set(watcherKey, watching);
             setWatchStateByTask((current) => ({ ...current, [task.id]: watching }));
             setWatchingTaskIds((current) => {
               const next = new Set(current);
@@ -578,7 +631,7 @@ function TasksScreenContent() {
     };
     void prefetch();
     return () => controller.abort();
-  }, [currentPage?.tasks, userId, workspaceId]);
+  }, [currentPage?.tasks, userId, visibleTaskIds, workspaceId]);
 
   const loadMore = async () => {
     if (
@@ -594,18 +647,23 @@ function TasksScreenContent() {
     setLoadingMore(true);
     setError(null);
     try {
-      const next = await taskService.listTasks(
-        workspaceId,
-        {
-          relation: activeRelation,
-          page: currentPage.page + 1,
-          query: debouncedQuery,
-          ...(statusFilter ? { status: statusFilter } : {}),
-          ...(priorityFilter ? { priority: priorityFilter } : {}),
-          canViewAllTasks,
-        },
-        controller.signal,
-      );
+      const requestNextPage = () =>
+        taskService.listTasks(
+          workspaceId,
+          {
+            relation: activeRelation,
+            page: currentPage.page + 1,
+            query: debouncedQuery,
+            ...(statusFilter ? { status: statusFilter } : {}),
+            ...(priorityFilter ? { priority: priorityFilter } : {}),
+            canViewAllTasks,
+          },
+          controller.signal,
+        );
+      const nextPageKey = tasksCacheKey ? `${tasksCacheKey}:page:${currentPage.page + 1}` : null;
+      const next = nextPageKey
+        ? await serverCache.fetch(nextPageKey, requestNextPage, { staleTime: cachePolicy.taskList })
+        : await requestNextPage();
       if (controller.signal.aborted) return;
       setPageData((previous) => {
         if (!previous || previous.workspaceId !== workspaceId || previous.key !== listKey) {
@@ -647,27 +705,6 @@ function TasksScreenContent() {
     });
   };
 
-  const resolveTaskAccess = (task: TaskListItem) => {
-    if (task.access || taskAccessById[task.id] || !workspaceId || accessLoadingId === task.id)
-      return;
-    setAccessLoadingId(task.id);
-    void taskService
-      .getTask(task.id, workspaceId)
-      .then(({ access }) => {
-        setTaskAccessById((current) => ({ ...current, [task.id]: access }));
-        if (!access.canView || getTaskSwipeRevealWidth(access) === 0) {
-          openSwipeable.current?.methods.close();
-          handleSwipeClose(task.id);
-        }
-      })
-      .catch((accessError) => {
-        openSwipeable.current?.methods.close();
-        handleSwipeClose(task.id);
-        setError(requestErrorMessage(accessError));
-      })
-      .finally(() => setAccessLoadingId((current) => (current === task.id ? null : current)));
-  };
-
   const closeOpenSwipeable = () => {
     openSwipeable.current?.methods.close();
     openSwipeable.current = null;
@@ -685,6 +722,17 @@ function TasksScreenContent() {
     if (openSwipeable.current?.taskId === taskId) openSwipeable.current = null;
     setOpenTaskId((current) => (current === taskId ? null : current));
   };
+
+  const onViewableItemsChanged = useMemo(
+    () =>
+      ({ viewableItems }: { viewableItems: { item?: TaskListItem }[] }) => {
+        setVisibleTaskIds(
+          viewableItems.map((token) => token.item?.id).filter((id): id is string => Boolean(id)),
+        );
+      },
+    [],
+  );
+  const viewabilityConfig = useMemo(() => ({ itemVisiblePercentThreshold: 20 }), []);
 
   if (!isReady) {
     return (
@@ -973,6 +1021,8 @@ function TasksScreenContent() {
             />
           }
           onScrollBeginDrag={closeOpenSwipeable}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
           renderItem={({ item }) => (
             <TaskCard
               task={
@@ -988,7 +1038,6 @@ function TasksScreenContent() {
               watchLoading={watchLoadingId === item.id}
               onClose={handleSwipeClose}
               onOpen={handleSwipeOpen}
-              onAccessNeeded={resolveTaskAccess}
               onActions={(selected) => {
                 closeOpenSwipeable();
                 setOpenTaskId(selected.id);
