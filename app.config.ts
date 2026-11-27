@@ -42,6 +42,7 @@ export default function appConfig(): ExpoConfig {
   );
 
   return {
+    owner: 'admiino-pte',
     name: identity.displayName,
     slug: 'admiino-mobile',
     version: '1.0.0',
@@ -90,6 +91,9 @@ export default function appConfig(): ExpoConfig {
     },
     extra: {
       appEnvironment: environment.appEnv,
+      eas: {
+        projectId: '5010e767-3661-4976-8df9-56b94281ac4d',
+      },
     },
   };
 }

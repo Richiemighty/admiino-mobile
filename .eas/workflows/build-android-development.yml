@@ -1,0 +1,10 @@
+name: Build Android development
+
+jobs:
+  build_android_development:
+    name: Build Android development APK
+    type: build
+    environment: development
+    params:
+      platform: android
+      profile: development
