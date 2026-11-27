@@ -165,6 +165,13 @@ export interface TaskMemberOption {
   profilePictureUrl?: string | null;
 }
 
+export interface TaskParticipantMemberOption {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
 export interface TaskProjectOption {
   id: string;
   name: string;
@@ -864,9 +871,71 @@ export class TaskService {
     return data.participants as TaskParticipant[];
   }
 
+  async searchParticipantMembers(
+    taskId: string,
+    workspaceId: string,
+    search: string,
+    options: { limit?: number; offset?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<{ members: TaskParticipantMemberOption[]; pagination: { limit: number; offset: number; total: number; hasMore: boolean } }> {
+    const queryText = search.trim();
+    if (queryText.length < 2) throw new ApiError('Enter at least two characters to search workspace members.', 400);
+    const token = await this.sessions.getAccessToken();
+    const query = new URLSearchParams({
+      search: queryText,
+      limit: String(options.limit ?? 20),
+      offset: String(options.offset ?? 0),
+    });
+    const response: unknown = await this.client.get(
+      `/tasks/${encodeURIComponent(taskId)}/participant-members?${query.toString()}`,
+      { token, workspaceId, signal },
+    );
+    requireSuccess(response, 'The task workspace member response was invalid.');
+    const data = requireDataRecord(response.data, 'The task workspace member response was invalid.');
+    const pagination = requireDataRecord(data.pagination, 'The task workspace member pagination response was invalid.');
+    if (
+      !Array.isArray(data.members) ||
+      !data.members.every((member) =>
+        isRecord(member) &&
+        typeof member.userId === 'string' &&
+        typeof member.firstName === 'string' &&
+        typeof member.lastName === 'string' &&
+        typeof member.email === 'string')
+    ) {
+      throw new ApiError('The backend returned invalid task workspace members.', 502);
+    }
+    if (
+      typeof pagination.limit !== 'number' ||
+      typeof pagination.offset !== 'number' ||
+      typeof pagination.total !== 'number' ||
+      typeof pagination.hasMore !== 'boolean'
+    ) {
+      throw new ApiError('The backend returned invalid task workspace member pagination.', 502);
+    }
+    return {
+      members: data.members as TaskParticipantMemberOption[],
+      pagination: {
+        limit: pagination.limit,
+        offset: pagination.offset,
+        total: pagination.total,
+        hasMore: pagination.hasMore,
+      },
+    };
+  }
+
   async addParticipant(taskId: string, workspaceId: string, userId: string, role: TaskParticipantRole, signal?: AbortSignal): Promise<void> {
     const token = await this.sessions.getAccessToken();
     const response: unknown = await this.client.post(`/tasks/${encodeURIComponent(taskId)}/participants`, { userId, role }, { token, workspaceId, signal });
+    requireSuccess(response, 'The participant could not be added.');
+  }
+
+  async addParticipantByEmail(taskId: string, workspaceId: string, email: string, role: TaskParticipantRole, signal?: AbortSignal): Promise<void> {
+    const token = await this.sessions.getAccessToken();
+    const response: unknown = await this.client.post(
+      `/tasks/${encodeURIComponent(taskId)}/participants`,
+      { email, role },
+      { token, workspaceId, signal },
+    );
     requireSuccess(response, 'The participant could not be added.');
   }
 
@@ -874,6 +943,22 @@ export class TaskService {
     const token = await this.sessions.getAccessToken();
     const response: unknown = await this.client.request(`/tasks/${encodeURIComponent(taskId)}/participants/${encodeURIComponent(userId)}/${role}`, { method: 'DELETE', token, workspaceId, signal });
     requireSuccess(response, 'The participant could not be removed.');
+  }
+
+  async changeParticipantRole(
+    taskId: string,
+    workspaceId: string,
+    userId: string,
+    currentRole: TaskParticipantRole,
+    role: TaskParticipantRole,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const token = await this.sessions.getAccessToken();
+    const response: unknown = await this.client.request(
+      `/tasks/${encodeURIComponent(taskId)}/participants/${encodeURIComponent(userId)}`,
+      { method: 'PATCH', body: { currentRole, role }, token, workspaceId, signal },
+    );
+    requireSuccess(response, 'The participant role could not be changed.');
   }
 }
 

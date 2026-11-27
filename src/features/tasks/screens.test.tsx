@@ -47,6 +47,12 @@ jest.mock('./service', () => ({
     getProjects: jest.fn(),
     getTeams: jest.fn(),
     getWatchers: jest.fn(),
+    getParticipants: jest.fn(),
+    searchParticipantMembers: jest.fn(),
+    addParticipant: jest.fn(),
+    addParticipantByEmail: jest.fn(),
+    removeParticipant: jest.fn(),
+    changeParticipantRole: jest.fn(),
     watchTask: jest.fn(),
     unwatchTask: jest.fn(),
   },
@@ -153,6 +159,14 @@ describe('P12 task lists, detail, and forms', () => {
     jest.mocked(taskService.listTasks).mockResolvedValue(page('workspace-1', 'My task'));
     jest.mocked(taskService.getTask).mockResolvedValue({ task, access: editableAccess });
     jest.mocked(taskService.getDependencies).mockResolvedValue(emptyDependencies);
+    jest.mocked(taskService.getParticipants).mockResolvedValue([]);
+    jest.mocked(taskService.searchParticipantMembers).mockResolvedValue({
+      members: [],
+      pagination: { limit: 20, offset: 0, total: 0, hasMore: false },
+    });
+    jest.mocked(taskService.addParticipant).mockResolvedValue(undefined);
+    jest.mocked(taskService.addParticipantByEmail).mockResolvedValue(undefined);
+    jest.mocked(taskService.changeParticipantRole).mockResolvedValue(undefined);
     jest.mocked(taskService.getTeamLead).mockResolvedValue(null);
     jest.mocked(taskService.getWatchers).mockResolvedValue([]);
     jest.mocked(taskService.createTask).mockResolvedValue({
@@ -356,9 +370,107 @@ describe('P12 task lists, detail, and forms', () => {
     expect(await screen.findByText(task.title)).toBeTruthy();
     expect(screen.getByText('Launch project')).toBeTruthy();
     expect(screen.queryByText('Operations')).toBeNull();
+  });
+
+  it('loads active participants through the participant API instead of relying on task details', async () => {
+    jest.mocked(taskService.getTask).mockResolvedValue({ task, access: editableAccess });
+    jest.mocked(taskService.getParticipants).mockResolvedValue([{
+      id: 'participant-1',
+      taskId: task.id,
+      userId: 'internal-user-id',
+      role: 'watcher',
+      user: { id: 'internal-user-id', firstName: 'Christiana', lastName: 'Oladosu', email: 'christiana@example.test' },
+    }, {
+      id: 'participant-2',
+      taskId: task.id,
+      userId: 'reviewer-user-id',
+      role: 'reviewer',
+      user: { id: 'reviewer-user-id', firstName: 'Christine', lastName: 'Sarima', email: 'contact@example.test' },
+    }]);
+
+    await renderWithProviders(<TaskDetailsScreen taskId={task.id} />);
+    expect(await screen.findByText('Christiana Oladosu')).toBeTruthy();
+    expect(screen.getByText('christiana@example.test')).toBeTruthy();
+    expect(screen.getByText('Christine Sarima')).toBeTruthy();
+    expect(screen.getByText('contact@example.test')).toBeTruthy();
+    expect(screen.getByText('Reviewer')).toBeTruthy();
+    expect(screen.queryByText('No explicit participants.')).toBeNull();
+    expect(screen.queryByText('internal-user-id')).toBeNull();
+    expect(taskService.getParticipants).toHaveBeenCalledWith(task.id, 'workspace-1', expect.any(AbortSignal));
     expect(screen.getByText('Confirm dates')).toBeTruthy();
     expect(screen.getByText('plan.pdf')).toBeTruthy();
     expect(screen.queryByText(/Status Changed/)).toBeNull();
+  });
+
+  it('searches task-scoped members and adds a selected member without displaying their user ID', async () => {
+    jest.mocked(taskService.getTask).mockResolvedValue({
+      task,
+      access: { ...editableAccess, canManageParticipants: true },
+    });
+    jest.mocked(taskService.searchParticipantMembers).mockResolvedValue({
+      members: [{
+        userId: 'internal-user-id',
+        firstName: 'Christiana',
+        lastName: 'Oladosu',
+        email: 'christiana@example.test',
+      }],
+      pagination: { limit: 20, offset: 0, total: 1, hasMore: false },
+    });
+
+    await renderWithProviders(<TaskDetailsScreen taskId={task.id} />);
+    const search = await screen.findByLabelText('Search task workspace members');
+    await fireEvent.changeText(search, 'Christiana');
+    expect(await screen.findByText('Christiana Oladosu')).toBeTruthy();
+    expect(screen.getByText('christiana@example.test')).toBeTruthy();
+    expect(screen.queryByText('internal-user-id')).toBeNull();
+
+    await fireEvent.press(screen.getByLabelText('Add Christiana Oladosu as Watcher'));
+    await waitFor(() => {
+      expect(taskService.addParticipant).toHaveBeenCalledWith(
+        task.id,
+        'workspace-1',
+        'internal-user-id',
+        'watcher',
+      );
+    });
+    expect(taskService.searchParticipantMembers).toHaveBeenCalledWith(
+      task.id,
+      'workspace-1',
+      'Christiana',
+      { limit: 20, offset: 0 },
+      expect.any(AbortSignal),
+    );
+    expect(screen.queryByLabelText('Add Christiana Oladosu as Reviewer')).toBeNull();
+  });
+
+  it('allows exact registered workspace-member email entry without creating unknown users', async () => {
+    jest.mocked(taskService.getTask).mockResolvedValue({
+      task,
+      access: { ...editableAccess, canManageParticipants: true },
+    });
+    jest.mocked(taskService.searchParticipantMembers).mockResolvedValue({
+      members: [{
+        userId: 'internal-user-id',
+        firstName: 'Christiana',
+        lastName: 'Oladosu',
+        email: 'christiana@example.test',
+      }],
+      pagination: { limit: 20, offset: 0, total: 1, hasMore: false },
+    });
+
+    await renderWithProviders(<TaskDetailsScreen taskId={task.id} />);
+    const search = await screen.findByLabelText('Search task workspace members');
+    await fireEvent.changeText(search, 'christiana@example.test');
+    expect(await screen.findByText('Christiana Oladosu')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('Add exact email as Commenter'));
+    await waitFor(() => {
+      expect(taskService.addParticipantByEmail).toHaveBeenCalledWith(
+        task.id,
+        'workspace-1',
+        'christiana@example.test',
+        'commenter',
+      );
+    });
   });
 
   it('opens the conversation while preserving project and Inbox return context', async () => {

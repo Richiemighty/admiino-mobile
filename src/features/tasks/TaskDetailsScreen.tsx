@@ -42,6 +42,8 @@ import {
   type TaskDependencyGraph,
   type TaskDetails,
   type TaskMemberOption,
+  type TaskParticipant,
+  type TaskParticipantMemberOption,
   type TaskRecord,
   taskService,
   type TaskStatus,
@@ -283,6 +285,13 @@ export function TaskDetailsScreen({
   const { colors } = useAppTheme();
   const workspaceId = activeWorkspace?.companyId ?? null;
   const [loadedTask, setLoadedTask] = useState<LoadedTask | null>(null);
+  const [loadedParticipants, setLoadedParticipants] = useState<{
+    workspaceId: string;
+    taskId: string;
+    participants: TaskParticipant[];
+  } | null>(null);
+  const [participantListLoading, setParticipantListLoading] = useState(true);
+  const [participantListError, setParticipantListError] = useState<string | null>(null);
   const [loadedDependencies, setLoadedDependencies] = useState<LoadedDependencies | null>(null);
   const [dependenciesError, setDependenciesError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -299,6 +308,12 @@ export function TaskDetailsScreen({
   const [assigneeSaveError, setAssigneeSaveError] = useState<string | null>(null);
   const [participantBusy, setParticipantBusy] = useState(false);
   const [participantError, setParticipantError] = useState<string | null>(null);
+  const [participantSearch, setParticipantSearch] = useState('');
+  const [participantMembers, setParticipantMembers] = useState<TaskParticipantMemberOption[]>([]);
+  const [participantMembersLoading, setParticipantMembersLoading] = useState(false);
+  const [participantMembersError, setParticipantMembersError] = useState<string | null>(null);
+  const [participantMembersHasMore, setParticipantMembersHasMore] = useState(false);
+  const [participantMembersLoadingMore, setParticipantMembersLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<LocalTaskFile | null>(null);
@@ -319,6 +334,10 @@ export function TaskDetailsScreen({
   } | null>(null);
   const current =
     loadedTask?.workspaceId === workspaceId && loadedTask.taskId === taskId ? loadedTask : null;
+  const currentParticipants =
+    loadedParticipants?.workspaceId === workspaceId && loadedParticipants.taskId === taskId
+      ? loadedParticipants.participants
+      : null;
   const currentDependencies =
     loadedDependencies?.workspaceId === workspaceId && loadedDependencies.taskId === taskId
       ? loadedDependencies.graph
@@ -385,6 +404,26 @@ export function TaskDetailsScreen({
       setLoadError(null);
       setStatusError(null);
       setStatusMessage(null);
+      setParticipantListError(null);
+      setParticipantListLoading(true);
+      void taskService.getParticipants(taskId, workspaceId, controller.signal)
+        .then((participants) => {
+          if (!controller.signal.aborted && requestAttempt === retry) {
+            setLoadedParticipants({ workspaceId, taskId, participants });
+          }
+        })
+        .catch((participantLoadError: unknown) => {
+          if (!controller.signal.aborted && requestAttempt === retry) {
+            setParticipantListError(
+              participantLoadError instanceof ApiNetworkError
+                ? 'Participants could not be loaded while offline.'
+                : 'Task participants are temporarily unavailable.',
+            );
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted && requestAttempt === retry) setParticipantListLoading(false);
+        });
       const requestTask = () => taskService.getTask(taskId, workspaceId, controller.signal);
       void (
         key
@@ -539,20 +578,81 @@ export function TaskDetailsScreen({
   }, [assigneesSheetVisible, canChangeStatus, workspaceId]);
 
   useEffect(() => {
-    if (!canManageParticipants || !workspaceId || memberOptions.length) return undefined;
+    const search = participantSearch.trim();
+    if (!canManageParticipants || !workspaceId || search.length < 2) {
+      setParticipantMembers([]);
+      setParticipantMembersHasMore(false);
+      setParticipantMembersError(null);
+      setParticipantMembersLoading(false);
+      return undefined;
+    }
     const controller = new AbortController();
-    void taskService.getMembers(workspaceId, controller.signal).then((members) => {
-      if (!controller.signal.aborted) setMemberOptions(members);
-    }).catch(() => {
-      if (!controller.signal.aborted) setParticipantError('Workspace members could not be loaded.');
-    });
-    return () => controller.abort();
-  }, [canManageParticipants, memberOptions.length, workspaceId]);
+    setParticipantMembers([]);
+    setParticipantMembersLoading(true);
+    setParticipantMembersError(null);
+    const timer = setTimeout(() => {
+      void taskService.searchParticipantMembers(taskId, workspaceId, search, { limit: 20, offset: 0 }, controller.signal)
+        .then((result) => {
+          if (!controller.signal.aborted) {
+            setParticipantMembers(result.members);
+            setParticipantMembersHasMore(result.pagination.hasMore);
+          }
+        })
+        .catch((error: unknown) => {
+          if (!controller.signal.aborted) {
+            setParticipantMembersError(
+              error instanceof ApiError && error.status === 403
+                ? 'You cannot search members for this task.'
+                : 'Workspace members could not be loaded. Try again.',
+            );
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setParticipantMembersLoading(false);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [canManageParticipants, participantSearch, taskId, workspaceId]);
+
+  const loadMoreParticipantMembers = async () => {
+    if (!workspaceId || !participantMembersHasMore || participantMembersLoadingMore || participantSearch.trim().length < 2) return;
+    setParticipantMembersLoadingMore(true);
+    setParticipantMembersError(null);
+    try {
+      const result = await taskService.searchParticipantMembers(taskId, workspaceId, participantSearch.trim(), {
+        limit: 20,
+        offset: participantMembers.length,
+      });
+      setParticipantMembers((currentMembers) => [...currentMembers, ...result.members]);
+      setParticipantMembersHasMore(result.pagination.hasMore);
+    } catch (error: unknown) {
+      setParticipantMembersError(error instanceof ApiError ? error.message : 'More workspace members could not be loaded.');
+    } finally {
+      setParticipantMembersLoadingMore(false);
+    }
+  };
 
   const reloadTaskAfterParticipantChange = async () => {
     if (!workspaceId || !taskId) return;
-    const details = await taskService.getTask(taskId, workspaceId);
-    setLoadedTask({ workspaceId, taskId, details });
+    const [detailsResult, participantsResult] = await Promise.allSettled([
+      taskService.getTask(taskId, workspaceId),
+      taskService.getParticipants(taskId, workspaceId),
+    ]);
+    if (detailsResult.status === 'fulfilled') {
+      setLoadedTask({ workspaceId, taskId, details: detailsResult.value });
+    } else {
+      setParticipantListError('The participant change was saved, but task details could not be refreshed.');
+    }
+    if (participantsResult.status === 'fulfilled') {
+      setLoadedParticipants({ workspaceId, taskId, participants: participantsResult.value });
+      setParticipantListError(null);
+    } else {
+      setParticipantListError('The participant change was saved, but the participant list could not be refreshed.');
+    }
+    setParticipantListLoading(false);
   };
 
   const addParticipant = async (userId: string, role: 'watcher' | 'commenter' | 'reviewer') => {
@@ -578,6 +678,39 @@ export function TaskDetailsScreen({
       await reloadTaskAfterParticipantChange();
     } catch (error: unknown) {
       setParticipantError(error instanceof ApiError ? error.message : 'Participant could not be removed.');
+    } finally {
+      setParticipantBusy(false);
+    }
+  };
+
+  const addParticipantByEmail = async (email: string, role: 'watcher' | 'commenter' | 'reviewer') => {
+    if (!workspaceId || !canManageParticipants || participantBusy) return;
+    setParticipantBusy(true);
+    setParticipantError(null);
+    try {
+      await taskService.addParticipantByEmail(taskId, workspaceId, email, role);
+      await reloadTaskAfterParticipantChange();
+      setParticipantSearch('');
+    } catch (error: unknown) {
+      setParticipantError(error instanceof ApiError ? error.message : 'Participant could not be added.');
+    } finally {
+      setParticipantBusy(false);
+    }
+  };
+
+  const changeParticipantRole = async (
+    userId: string,
+    currentRole: 'watcher' | 'commenter' | 'reviewer',
+    role: 'watcher' | 'commenter' | 'reviewer',
+  ) => {
+    if (!workspaceId || !canManageParticipants || participantBusy || currentRole === role) return;
+    setParticipantBusy(true);
+    setParticipantError(null);
+    try {
+      await taskService.changeParticipantRole(taskId, workspaceId, userId, currentRole, role);
+      await reloadTaskAfterParticipantChange();
+    } catch (error: unknown) {
+      setParticipantError(error instanceof ApiError ? error.message : 'Participant role could not be changed.');
     } finally {
       setParticipantBusy(false);
     }
@@ -802,6 +935,11 @@ export function TaskDetailsScreen({
   }
 
   const canEditFields = access?.canEdit === true;
+  const canAppointReviewer = task.creator?.id === permissions?.userId;
+  const exactEmailMember = participantSearch.includes('@')
+    ? participantMembers.find((member) => member.email.toLowerCase() === participantSearch.trim().toLowerCase())
+    : undefined;
+  const listedParticipantMembers = participantMembers.filter((member) => member.userId !== exactEmailMember?.userId);
   const assignedPeople = task.assignees?.length
     ? task.assignees
     : task.assignee
@@ -967,44 +1105,148 @@ export function TaskDetailsScreen({
         <Section title="Task access & participants">
           <AppCard padding="sm" style={{ gap: themeTokens.spacing.xs, borderWidth: 0 }}>
             <DetailLine label="Creator" value={personName(task.creator)} />
-            {(task.participants ?? []).length === 0 ? (
+            {participantListLoading && currentParticipants === null ? (
+              <AppText accessibilityRole="text" tone="secondary" variant="caption">Loading participants…</AppText>
+            ) : participantListError ? (
+              <View style={{ gap: themeTokens.spacing.xs }}>
+                <InlineError message={participantListError} />
+                <AppButton accessibilityLabel="Retry loading task participants" variant="secondary" onPress={() => setRetry((value) => value + 1)}>Retry</AppButton>
+              </View>
+            ) : (currentParticipants ?? []).length === 0 ? (
               <AppText tone="secondary" variant="caption">No explicit participants.</AppText>
             ) : (
-              (task.participants ?? []).map((participant) => (
+              (currentParticipants ?? []).map((participant) => (
                 <View key={participant.id} style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm, minHeight: 40 }}>
                   <UserAvatar imageUrl={participant.user?.profilePictureUrl} name={personName(participant.user ?? null)} size={28} />
                   <View style={{ flex: 1 }}>
                     <AppText variant="label">{personName(participant.user ?? null)}</AppText>
+                    {participant.user?.email && <AppText tone="secondary" variant="caption">{participant.user.email}</AppText>}
                     <AppText tone="secondary" variant="caption">{labelFor(participant.role)}</AppText>
                   </View>
-                  {canManageParticipants && (
+                  {canManageParticipants && (participant.role !== 'reviewer' || canAppointReviewer) && (
                     <Pressable accessibilityLabel={`Remove ${labelFor(participant.role)}`} accessibilityRole="button" disabled={participantBusy} onPress={() => void removeParticipant(participant.userId, participant.role)}>
                       <AppText tone="danger" variant="caption">Remove</AppText>
                     </Pressable>
                   )}
+                  {canManageParticipants && (participant.role !== 'reviewer' || canAppointReviewer) && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.xs }}>
+                      {(['watcher', 'commenter', 'reviewer'] as const)
+                        .filter((role) => role !== participant.role && (role !== 'reviewer' || canAppointReviewer))
+                        .map((role) => (
+                          <Pressable
+                            key={role}
+                            accessibilityLabel={`Change ${labelFor(participant.role)} to ${labelFor(role)}`}
+                            accessibilityRole="button"
+                            disabled={participantBusy}
+                            onPress={() => void changeParticipantRole(participant.userId, participant.role, role)}
+                          >
+                            <AppText tone="link" variant="caption">Change to {labelFor(role)}</AppText>
+                          </Pressable>
+                        ))}
+                    </View>
+                  )}
                 </View>
               ))
             )}
-            {canManageParticipants && memberOptions.length > 0 && (
+            {canManageParticipants && (
               <View style={{ gap: themeTokens.spacing.xs, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: themeTokens.spacing.sm }}>
-                <AppText tone="secondary" variant="caption">Add a workspace member:</AppText>
-                {memberOptions
-                  .filter((member) => !(task.participants ?? []).some((participant) => participant.userId === member.userId))
-                  .slice(0, 8)
-                  .map((member) => (
-                    <View key={member.userId} style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.xs }}>
-                      <AppText style={{ flex: 1 }} variant="caption">{member.firstName} {member.lastName}</AppText>
-                      <Pressable accessibilityLabel={`Add ${member.firstName} ${member.lastName} as commenter`} accessibilityRole="button" disabled={participantBusy} onPress={() => void addParticipant(member.userId, 'commenter')}>
-                        <AppText tone="link" variant="caption">Commenter</AppText>
-                      </Pressable>
-                      <Pressable accessibilityLabel={`Add ${member.firstName} ${member.lastName} as watcher`} accessibilityRole="button" disabled={participantBusy} onPress={() => void addParticipant(member.userId, 'watcher')}>
-                        <AppText tone="link" variant="caption">Watcher</AppText>
-                      </Pressable>
-                      <Pressable accessibilityLabel={`Add ${member.firstName} ${member.lastName} as reviewer`} accessibilityRole="button" disabled={participantBusy} onPress={() => void addParticipant(member.userId, 'reviewer')}>
-                        <AppText tone="link" variant="caption">Reviewer</AppText>
-                      </Pressable>
-                    </View>
-                  ))}
+                <AppText tone="secondary" variant="caption">Search active members of this task&apos;s workspace by name or email:</AppText>
+                <TextInput
+                  accessibilityLabel="Search task workspace members"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onChangeText={setParticipantSearch}
+                  placeholder="Name or email"
+                  placeholderTextColor={colors.textMuted}
+                  value={participantSearch}
+                  style={{
+                    color: colors.text,
+                    borderColor: colors.border,
+                    borderWidth: 1,
+                    borderRadius: themeTokens.radius.sm,
+                    paddingHorizontal: themeTokens.spacing.sm,
+                    paddingVertical: themeTokens.spacing.xs,
+                  }}
+                />
+                {participantSearch.trim().length < 2 ? (
+                  <AppText tone="secondary" variant="caption">Enter at least two characters to search.</AppText>
+                ) : participantMembersLoading ? (
+                  <AppText tone="secondary" variant="caption">Searching workspace members…</AppText>
+                ) : participantMembersError ? (
+                  <InlineError message={participantMembersError} />
+                ) : participantMembers.length === 0 ? (
+                  <AppText tone="secondary" variant="caption">No active workspace member found. The person must join this workspace before being added.</AppText>
+                ) : (
+                  <>
+                    {exactEmailMember && (
+                      <View style={{ gap: themeTokens.spacing.xs, borderColor: colors.border, borderWidth: 1, borderRadius: themeTokens.radius.sm, padding: themeTokens.spacing.sm }}>
+                        <AppText variant="label">{exactEmailMember.firstName} {exactEmailMember.lastName}</AppText>
+                        <AppText tone="secondary" variant="caption">{exactEmailMember.email}</AppText>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.sm }}>
+                          {(['watcher', 'commenter', 'reviewer'] as const)
+                            .filter((role) => role !== 'reviewer' || canAppointReviewer)
+                            .map((role) => {
+                              const alreadyGranted = (currentParticipants ?? []).some(
+                                (participant) => participant.userId === exactEmailMember.userId && participant.role === role,
+                              );
+                              return (
+                                <Pressable
+                                  key={role}
+                                  accessibilityLabel={alreadyGranted ? `${labelFor(role)} already granted` : `Add exact email as ${labelFor(role)}`}
+                                  accessibilityRole="button"
+                                  disabled={participantBusy || alreadyGranted}
+                                  onPress={() => void addParticipantByEmail(exactEmailMember.email, role)}
+                                >
+                                  <AppText tone={alreadyGranted ? 'secondary' : 'link'} variant="caption">
+                                    {alreadyGranted ? `${labelFor(role)} added` : `Add as ${labelFor(role)}`}
+                                  </AppText>
+                                </Pressable>
+                              );
+                            })}
+                        </View>
+                      </View>
+                    )}
+                    {listedParticipantMembers.map((member) => (
+                      <View key={member.userId} style={{ gap: themeTokens.spacing.xs, borderColor: colors.border, borderWidth: 1, borderRadius: themeTokens.radius.sm, padding: themeTokens.spacing.sm }}>
+                        <AppText variant="label">{member.firstName} {member.lastName}</AppText>
+                        <AppText tone="secondary" variant="caption">{member.email}</AppText>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: themeTokens.spacing.sm }}>
+                          {(['watcher', 'commenter', 'reviewer'] as const)
+                            .filter((role) => role !== 'reviewer' || canAppointReviewer)
+                            .map((role) => {
+                              const alreadyGranted = (currentParticipants ?? []).some(
+                                (participant) => participant.userId === member.userId && participant.role === role,
+                              );
+                              return (
+                                <Pressable
+                                  key={role}
+                                  accessibilityLabel={alreadyGranted ? `${labelFor(role)} already granted` : `Add ${member.firstName} ${member.lastName} as ${labelFor(role)}`}
+                                  accessibilityRole="button"
+                                  disabled={participantBusy || alreadyGranted}
+                                  onPress={() => void addParticipant(member.userId, role)}
+                                >
+                                  <AppText tone={alreadyGranted ? 'secondary' : 'link'} variant="caption">
+                                    {alreadyGranted ? `${labelFor(role)} added` : `Add as ${labelFor(role)}`}
+                                  </AppText>
+                                </Pressable>
+                              );
+                            })}
+                        </View>
+                      </View>
+                    ))}
+                    {participantMembersHasMore && (
+                      <AppButton
+                        accessibilityLabel="Load more task workspace members"
+                        disabled={participantMembersLoadingMore}
+                        variant="secondary"
+                        onPress={() => void loadMoreParticipantMembers()}
+                      >
+                        {participantMembersLoadingMore ? 'Loading…' : 'Load more members'}
+                      </AppButton>
+                    )}
+                  </>
+                )}
+                {participantMembersError && participantMembers.length > 0 && <InlineError message={participantMembersError} />}
               </View>
             )}
             {participantError && <InlineError message={participantError} />}
