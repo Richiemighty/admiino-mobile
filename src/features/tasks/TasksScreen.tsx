@@ -871,6 +871,9 @@ function TasksScreenContent() {
   const views: { label: string; value: TaskRelation }[] = [
     { label: 'My Tasks', value: 'assigned' },
     { label: 'Created by Me', value: 'created' },
+    { label: 'Watching', value: 'watching' },
+    { label: 'Reviewing', value: 'reviewing' },
+    { label: 'Participating', value: 'participating' },
     ...(canViewAllTasks ? [{ label: 'All Tasks', value: 'all' as const }] : []),
   ];
 
@@ -887,6 +890,12 @@ function TasksScreenContent() {
         ? 'Tasks assigned to you will appear here.'
         : activeRelation === 'created'
           ? 'Tasks you create will appear here.'
+          : activeRelation === 'watching'
+            ? 'Tasks you watch will appear here.'
+            : activeRelation === 'reviewing'
+              ? 'Tasks awaiting your review will appear here.'
+              : activeRelation === 'participating'
+                ? 'Tasks where you are a participant will appear here.'
           : 'There are no tasks in this workspace.';
 
   return (

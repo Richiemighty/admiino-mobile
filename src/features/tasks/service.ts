@@ -17,7 +17,7 @@ export const TASK_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
 
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
-export type TaskRelation = 'assigned' | 'created' | 'all';
+export type TaskRelation = 'assigned' | 'created' | 'watching' | 'reviewing' | 'participating' | 'all';
 
 export interface TaskPerson {
   id: string;
@@ -55,6 +55,7 @@ export interface TaskRecord {
   creator?: TaskPerson | null;
   assignee?: TaskPerson | null;
   assignees?: TaskPerson[] | null;
+  participants?: TaskParticipant[] | null;
   subtasks?: { id: string; title: string; status: TaskStatus | string }[] | null;
   attachments?: TaskAttachmentRecord[] | null;
   activities?:
@@ -72,6 +73,25 @@ export interface TaskAccess {
   canEdit: boolean;
   readOnly: boolean;
   canCollaborate?: boolean;
+  canComment?: boolean;
+  canUploadAttachment?: boolean;
+  canDownloadAttachment?: boolean;
+  canManageParticipants?: boolean;
+  canReview?: boolean;
+  canChangeStatus?: boolean;
+  canAssign?: boolean;
+  relationship?: { creator?: boolean; assignee?: boolean; watcher?: boolean; commenter?: boolean; reviewer?: boolean };
+}
+
+export type TaskParticipantRole = 'watcher' | 'commenter' | 'reviewer';
+export interface TaskParticipant {
+  id: string;
+  taskId: string;
+  userId: string;
+  role: TaskParticipantRole;
+  grantedBy?: string;
+  grantedAt?: string;
+  user?: TaskPerson;
 }
 
 export interface TaskListItem extends TaskRecord {
@@ -122,6 +142,8 @@ export interface CreateTaskInput {
   priority: TaskPriority;
   deadline?: string;
   assigneeIds?: string[];
+  participants?: Array<{ userId: string; role: TaskParticipantRole }>;
+  allowAssigneeSharing?: boolean;
   projectId?: string;
   teamId?: string;
 }
@@ -195,7 +217,9 @@ function isTaskAccess(value: unknown): value is TaskAccess {
     typeof value.canView === 'boolean' &&
     typeof value.canEdit === 'boolean' &&
     typeof value.readOnly === 'boolean' &&
-    (value.canCollaborate === undefined || typeof value.canCollaborate === 'boolean')
+    (value.canCollaborate === undefined || typeof value.canCollaborate === 'boolean') &&
+    (value.canComment === undefined || typeof value.canComment === 'boolean') &&
+    (value.canReview === undefined || typeof value.canReview === 'boolean')
   );
 }
 
@@ -393,6 +417,8 @@ export class TaskService {
   ): Promise<TaskPage> {
     if (!workspaceId) throw new ApiError('Select a workspace to load tasks.', 400);
     if (filters.relation === 'all' && filters.canViewAllTasks !== true) {
+      // This is a UI capability gate only. The backend still filters every task
+      // by an explicit task relationship and remains the security authority.
       throw new ApiError('You do not have permission to view all tasks.', 403);
     }
     if (!Number.isInteger(filters.page) || filters.page < 1) {
@@ -595,6 +621,7 @@ export class TaskService {
       ...(assigneeIds.length ? { assigneeId: assigneeIds[0], assigneeIds } : {}),
       ...(input.projectId ? { projectId: input.projectId } : {}),
       ...(input.teamId ? { teamId: input.teamId } : {}),
+      allowAssigneeSharing: input.allowAssigneeSharing !== false,
     };
     const path =
       projectContext && input.projectId
@@ -826,6 +853,27 @@ export class TaskService {
       { method: 'DELETE', token, workspaceId, signal },
     );
     requireSuccess(response, 'The unwatch response was invalid.');
+  }
+
+  async getParticipants(taskId: string, workspaceId: string, signal?: AbortSignal): Promise<TaskParticipant[]> {
+    const token = await this.sessions.getAccessToken();
+    const response: unknown = await this.client.get(`/tasks/${encodeURIComponent(taskId)}/participants`, { token, workspaceId, signal });
+    requireSuccess(response, 'The task participant response was invalid.');
+    const data = requireDataRecord(response.data, 'The task participant response was invalid.');
+    if (!Array.isArray(data.participants)) throw new ApiError('The backend returned an invalid participant list.', 502);
+    return data.participants as TaskParticipant[];
+  }
+
+  async addParticipant(taskId: string, workspaceId: string, userId: string, role: TaskParticipantRole, signal?: AbortSignal): Promise<void> {
+    const token = await this.sessions.getAccessToken();
+    const response: unknown = await this.client.post(`/tasks/${encodeURIComponent(taskId)}/participants`, { userId, role }, { token, workspaceId, signal });
+    requireSuccess(response, 'The participant could not be added.');
+  }
+
+  async removeParticipant(taskId: string, workspaceId: string, userId: string, role: TaskParticipantRole, signal?: AbortSignal): Promise<void> {
+    const token = await this.sessions.getAccessToken();
+    const response: unknown = await this.client.request(`/tasks/${encodeURIComponent(taskId)}/participants/${encodeURIComponent(userId)}/${role}`, { method: 'DELETE', token, workspaceId, signal });
+    requireSuccess(response, 'The participant could not be removed.');
   }
 }
 

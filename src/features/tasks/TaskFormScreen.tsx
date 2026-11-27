@@ -24,6 +24,7 @@ import {
   type TaskAccess,
   type TaskMemberOption,
   type TaskPriority,
+  type TaskParticipantRole,
   type TaskProjectOption,
   type TaskRecord,
   taskService,
@@ -39,6 +40,9 @@ interface TaskFormValues {
   priority: TaskPriority;
   deadline: string;
   assigneeIds: string[];
+  participantIds: string[];
+  participantRole: TaskParticipantRole;
+  allowAssigneeSharing: boolean;
   projectId: string;
   teamId: string;
 }
@@ -63,6 +67,9 @@ const EMPTY_FORM: TaskFormValues = {
   priority: 'medium',
   deadline: '',
   assigneeIds: [],
+  participantIds: [],
+  participantRole: 'watcher',
+  allowAssigneeSharing: true,
   projectId: '',
   teamId: '',
 };
@@ -83,6 +90,9 @@ function formValuesForTask(task: TaskRecord): TaskFormValues {
     priority: task.priority ?? 'medium',
     deadline,
     assigneeIds: assignees.map((person) => person.id),
+    participantIds: [],
+    participantRole: 'watcher',
+    allowAssigneeSharing: true,
     projectId: task.projectId ?? '',
     teamId: task.teamId ?? '',
   };
@@ -499,7 +509,10 @@ function TaskFormScreenContent({
     form.deadline !== initialForm.deadline ||
     form.projectId !== initialForm.projectId ||
     form.teamId !== initialForm.teamId ||
-    form.assigneeIds.join('|') !== initialForm.assigneeIds.join('|');
+    form.assigneeIds.join('|') !== initialForm.assigneeIds.join('|') ||
+    form.participantIds.join('|') !== initialForm.participantIds.join('|') ||
+    form.participantRole !== initialForm.participantRole ||
+    form.allowAssigneeSharing !== initialForm.allowAssigneeSharing;
 
   const disablePreventRemove = usePreventRemove(
     formHasChanges && !discardConfirmed && !submitting,
@@ -688,6 +701,10 @@ function TaskFormScreenContent({
           priority: form.priority,
           ...(deadline ? { deadline } : {}),
           ...(form.assigneeIds.length ? { assigneeIds: form.assigneeIds } : {}),
+          ...(form.participantIds.length
+            ? { participants: form.participantIds.map((userId) => ({ userId, role: form.participantRole })) }
+            : {}),
+          allowAssigneeSharing: form.allowAssigneeSharing,
           ...(form.projectId ? { projectId: form.projectId } : {}),
           ...(form.teamId ? { teamId: form.teamId } : {}),
         };
@@ -814,6 +831,14 @@ function TaskFormScreenContent({
     id: member.userId,
     label: member.userId === user?.id ? `${optionLabel(member)} (you)` : optionLabel(member),
   }));
+  const participantOptions = eligibleMembers
+    .filter((member) => member.userId !== user?.id)
+    .map((member) => ({ id: member.userId, label: optionLabel(member) }));
+  const participantRoleOptions = [
+    { id: 'watcher', label: 'Watcher' },
+    { id: 'commenter', label: 'Commenter' },
+    { id: 'reviewer', label: 'Reviewer' },
+  ];
   return (
     <AppScreen keyboardAvoiding padding="md">
       <View style={{ flex: 1, width: '100%', maxWidth: 720, alignSelf: 'center' }}>
@@ -933,6 +958,32 @@ function TaskFormScreenContent({
                 options={memberOptions}
                 selectedIds={form.assigneeIds}
               />
+              {mode === 'create' && canAssignOthers && (
+                <>
+                  <ChoiceField
+                    label="Participant role"
+                    onChange={(ids) => updateForm({ participantRole: (ids[0] as TaskParticipantRole) || 'watcher' })}
+                    options={participantRoleOptions}
+                    selectedIds={[form.participantRole]}
+                  />
+                  <ChoiceField
+                    label="Participants"
+                    multiple
+                    onChange={(ids) => updateForm({ participantIds: ids })}
+                    options={participantOptions}
+                    selectedIds={form.participantIds}
+                  />
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: form.allowAssigneeSharing }}
+                    onPress={() => updateForm({ allowAssigneeSharing: !form.allowAssigneeSharing })}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm }}
+                  >
+                    <AppText>{form.allowAssigneeSharing ? '☑' : '☐'}</AppText>
+                    <AppText variant="caption">Allow assignees to add Watchers and Commenters</AppText>
+                  </Pressable>
+                </>
+              )}
               {optionsLoading && <LoadingState label="Loading task options" />}
               {optionsError && (
                 <InlineError

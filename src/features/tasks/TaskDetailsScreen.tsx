@@ -285,12 +285,6 @@ export function TaskDetailsScreen({
   const [loadedTask, setLoadedTask] = useState<LoadedTask | null>(null);
   const [loadedDependencies, setLoadedDependencies] = useState<LoadedDependencies | null>(null);
   const [dependenciesError, setDependenciesError] = useState<string | null>(null);
-  const [teamLeadLookup, setTeamLeadLookup] = useState<{
-    workspaceId: string;
-    taskId: string;
-    userId: string | null;
-  } | null>(null);
-  const [teamLeadError, setTeamLeadError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -303,6 +297,8 @@ export function TaskDetailsScreen({
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<Set<string>>(new Set());
   const [savingAssignees, setSavingAssignees] = useState(false);
   const [assigneeSaveError, setAssigneeSaveError] = useState<string | null>(null);
+  const [participantBusy, setParticipantBusy] = useState(false);
+  const [participantError, setParticipantError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<LocalTaskFile | null>(null);
@@ -332,9 +328,13 @@ export function TaskDetailsScreen({
     workspacePermissionStatus === 'ready' &&
     Boolean(activeWorkspace && workspaceId);
   const canChangeStatus =
-    current?.details.access.canEdit === true && current.details.access.readOnly === false;
+    current != null && (current.details.access.canChangeStatus === true
+      || (current.details.access.canChangeStatus === undefined && current.details.access.canEdit === true && current.details.access.readOnly === false));
   const canManageAssignees =
-    canChangeStatus && permissions?.permissions.assign_workspace_members === true;
+    current != null && (current.details.access.canAssign === true
+      || (current.details.access.canAssign === undefined && current.details.access.canEdit === true))
+    && permissions?.permissions.assign_workspace_members === true;
+  const canManageParticipants = current?.details.access.canManageParticipants === true;
   const backToContext = () => {
     if (returnToInbox) {
       router.replace('/inbox');
@@ -385,7 +385,6 @@ export function TaskDetailsScreen({
       setLoadError(null);
       setStatusError(null);
       setStatusMessage(null);
-      setTeamLeadError(null);
       const requestTask = () => taskService.getTask(taskId, workspaceId, controller.signal);
       void (
         key
@@ -399,25 +398,6 @@ export function TaskDetailsScreen({
           if (controller.signal.aborted || requestAttempt !== retry) return;
           const next = { workspaceId, taskId, details };
           setLoadedTask(next);
-          if (details.task.teamId) {
-            void taskService
-              .getTeamLead(details.task.teamId, workspaceId, controller.signal)
-              .then((userId) => {
-                if (!controller.signal.aborted) {
-                  setTeamLeadLookup({ workspaceId, taskId, userId });
-                }
-              })
-              .catch(() => {
-                if (!controller.signal.aborted) {
-                  setTeamLeadLookup({ workspaceId, taskId, userId: null });
-                  setTeamLeadError(
-                    'Team reviewer access could not be verified. Some status changes are hidden.',
-                  );
-                }
-              });
-          } else {
-            setTeamLeadLookup({ workspaceId, taskId, userId: null });
-          }
           return taskService
             .getDependencies(taskId, workspaceId, controller.signal)
             .then((graph) => {
@@ -557,6 +537,51 @@ export function TaskDetailsScreen({
       });
     return () => controller.abort();
   }, [assigneesSheetVisible, canChangeStatus, workspaceId]);
+
+  useEffect(() => {
+    if (!canManageParticipants || !workspaceId || memberOptions.length) return undefined;
+    const controller = new AbortController();
+    void taskService.getMembers(workspaceId, controller.signal).then((members) => {
+      if (!controller.signal.aborted) setMemberOptions(members);
+    }).catch(() => {
+      if (!controller.signal.aborted) setParticipantError('Workspace members could not be loaded.');
+    });
+    return () => controller.abort();
+  }, [canManageParticipants, memberOptions.length, workspaceId]);
+
+  const reloadTaskAfterParticipantChange = async () => {
+    if (!workspaceId || !taskId) return;
+    const details = await taskService.getTask(taskId, workspaceId);
+    setLoadedTask({ workspaceId, taskId, details });
+  };
+
+  const addParticipant = async (userId: string, role: 'watcher' | 'commenter' | 'reviewer') => {
+    if (!workspaceId || !canManageParticipants || participantBusy) return;
+    setParticipantBusy(true);
+    setParticipantError(null);
+    try {
+      await taskService.addParticipant(taskId, workspaceId, userId, role);
+      await reloadTaskAfterParticipantChange();
+    } catch (error: unknown) {
+      setParticipantError(error instanceof ApiError ? error.message : 'Participant could not be added.');
+    } finally {
+      setParticipantBusy(false);
+    }
+  };
+
+  const removeParticipant = async (userId: string, role: 'watcher' | 'commenter' | 'reviewer') => {
+    if (!workspaceId || !canManageParticipants || participantBusy) return;
+    setParticipantBusy(true);
+    setParticipantError(null);
+    try {
+      await taskService.removeParticipant(taskId, workspaceId, userId, role);
+      await reloadTaskAfterParticipantChange();
+    } catch (error: unknown) {
+      setParticipantError(error instanceof ApiError ? error.message : 'Participant could not be removed.');
+    } finally {
+      setParticipantBusy(false);
+    }
+  };
 
   const saveAssignees = async () => {
     if (!current || savingAssignees || !canChangeStatus) return;
@@ -776,8 +801,7 @@ export function TaskDetailsScreen({
     );
   }
 
-  const isMember = permissions?.role === 'member';
-  const canEditFields = canChangeStatus && !isMember;
+  const canEditFields = access?.canEdit === true;
   const assignedPeople = task.assignees?.length
     ? task.assignees
     : task.assignee
@@ -785,17 +809,11 @@ export function TaskDetailsScreen({
       : [];
   const assignedToCurrentUser = assignedPeople.some((person) => person.id === permissions?.userId);
   const isTeamTask = Boolean(task.teamId);
-  const teamLeadUserId =
-    teamLeadLookup?.workspaceId === workspaceId && teamLeadLookup.taskId === taskId
-      ? teamLeadLookup.userId
-      : null;
-  const isTeamLead = teamLeadUserId === permissions?.userId;
   const teamAssigneeMayNotComplete =
     isTeamTask &&
     assignedToCurrentUser &&
-    !['owner', 'admin', 'manager'].includes(permissions?.role ?? '') &&
-    task.creator?.id !== permissions?.userId &&
-    !isTeamLead;
+    access?.canReview !== true &&
+    task.creator?.id !== permissions?.userId;
   const teamAssigneeAwaitingReview = teamAssigneeMayNotComplete && task.status === 'in_review';
   const availableStatuses = task.status
     ? TASK_STATUSES.filter(
@@ -946,6 +964,53 @@ export function TaskDetailsScreen({
           </AppCard>
         </Section>
 
+        <Section title="Task access & participants">
+          <AppCard padding="sm" style={{ gap: themeTokens.spacing.xs, borderWidth: 0 }}>
+            <DetailLine label="Creator" value={personName(task.creator)} />
+            {(task.participants ?? []).length === 0 ? (
+              <AppText tone="secondary" variant="caption">No explicit participants.</AppText>
+            ) : (
+              (task.participants ?? []).map((participant) => (
+                <View key={participant.id} style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.sm, minHeight: 40 }}>
+                  <UserAvatar imageUrl={participant.user?.profilePictureUrl} name={personName(participant.user ?? null)} size={28} />
+                  <View style={{ flex: 1 }}>
+                    <AppText variant="label">{personName(participant.user ?? null)}</AppText>
+                    <AppText tone="secondary" variant="caption">{labelFor(participant.role)}</AppText>
+                  </View>
+                  {canManageParticipants && (
+                    <Pressable accessibilityLabel={`Remove ${labelFor(participant.role)}`} accessibilityRole="button" disabled={participantBusy} onPress={() => void removeParticipant(participant.userId, participant.role)}>
+                      <AppText tone="danger" variant="caption">Remove</AppText>
+                    </Pressable>
+                  )}
+                </View>
+              ))
+            )}
+            {canManageParticipants && memberOptions.length > 0 && (
+              <View style={{ gap: themeTokens.spacing.xs, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: themeTokens.spacing.sm }}>
+                <AppText tone="secondary" variant="caption">Add a workspace member:</AppText>
+                {memberOptions
+                  .filter((member) => !(task.participants ?? []).some((participant) => participant.userId === member.userId))
+                  .slice(0, 8)
+                  .map((member) => (
+                    <View key={member.userId} style={{ flexDirection: 'row', alignItems: 'center', gap: themeTokens.spacing.xs }}>
+                      <AppText style={{ flex: 1 }} variant="caption">{member.firstName} {member.lastName}</AppText>
+                      <Pressable accessibilityLabel={`Add ${member.firstName} ${member.lastName} as commenter`} accessibilityRole="button" disabled={participantBusy} onPress={() => void addParticipant(member.userId, 'commenter')}>
+                        <AppText tone="link" variant="caption">Commenter</AppText>
+                      </Pressable>
+                      <Pressable accessibilityLabel={`Add ${member.firstName} ${member.lastName} as watcher`} accessibilityRole="button" disabled={participantBusy} onPress={() => void addParticipant(member.userId, 'watcher')}>
+                        <AppText tone="link" variant="caption">Watcher</AppText>
+                      </Pressable>
+                      <Pressable accessibilityLabel={`Add ${member.firstName} ${member.lastName} as reviewer`} accessibilityRole="button" disabled={participantBusy} onPress={() => void addParticipant(member.userId, 'reviewer')}>
+                        <AppText tone="link" variant="caption">Reviewer</AppText>
+                      </Pressable>
+                    </View>
+                  ))}
+              </View>
+            )}
+            {participantError && <InlineError message={participantError} />}
+          </AppCard>
+        </Section>
+
         <Section title="Collaboration">
           <Pressable
             accessibilityLabel="Open task conversation"
@@ -1046,14 +1111,9 @@ export function TaskDetailsScreen({
             No status changes are available.
           </AppText>
         )}
-        {isMember && canChangeStatus && (
+        {access?.canEdit !== true && canChangeStatus && (
           <AppText tone="secondary" variant="caption">
-            Other task details are read-only.
-          </AppText>
-        )}
-        {teamLeadError && (
-          <AppText tone="warning" variant="caption">
-            Some status changes are unavailable.
+            Task details are read-only while you review or collaborate.
           </AppText>
         )}
 
