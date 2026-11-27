@@ -20,11 +20,10 @@ All new Admiino Mobile work goes directly to `main` and is pushed to `origin/mai
 
 ## EAS profiles
 
-- `development`: development client, internal distribution, Android APK, Expo `development` environment.
-- `preview`: internal Android APK profile with Expo `preview` environment and `EXPO_PUBLIC_APP_ENV=staging`.
-- `production`: store distribution with Expo `production` environment. It is not automatically built or submitted by this setup.
+- `development`: development client, internal Android APK, Expo `production` environment, and explicit production API variables.
+- `production`: store distribution with Expo `production` environment and explicit production API variables. It is not automatically submitted.
 
-The preview profile remains blocked from backend use until an approved staging API host is added to the environment allowlist. It must never fall back to `api.admiino.com`.
+There is no mobile preview/staging build profile. Staging is reserved for explicitly targeted automated backend tooling.
 
 ## GitHub workflow
 
@@ -85,16 +84,16 @@ iOS signing is not configured or claimed here. It requires approved Apple Develo
 ## Environment and security requirements
 
 - Development may run without backend connectivity, or use only a local/approved development host.
-- Preview/staging requires an approved HTTPS staging host and must reject protected production hosts.
-- Production remains restricted to the validated production configuration.
+- Normal development and both EAS build profiles require the validated production API origin `https://api.admiino.com`.
+- Automated backend tests must use `STAGE_API=https://admiino-backend-staging.onrender.com` supplied outside the mobile runtime configuration and must reject production origins before writes.
 - `EXPO_PUBLIC_*` values are public build-time values only; do not put tokens, JWTs, OAuth secrets or signing material there.
 - `.env.local`, credentials and signing files remain untracked.
-- The unresolved staging backend from P17.2B remains a dependency; no staging hostname is invented here.
+- No staging database migration or write was performed. Backend test tooling must use the existing isolated `STAGINGDB_URL` only after independently confirming its target.
 
 ## Current verification state
 
-- Project identity is configured in `app.config.ts`.
-- Existing EAS profiles are preserved.
+- Project identity and the guaranteed Android package fallback are configured in `app.config.ts`.
+- Development and production EAS profiles explicitly use the production API; the unused preview profile was removed.
 - Manual Android development workflow is prepared.
 - Expo account ownership, GitHub linkage, Android signing and successful cloud build are **not yet verified** because `EXPO_TOKEN` was not supplied.
 - The terminal's existing Expo account was not logged out, changed, or used to initialise this project.

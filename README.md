@@ -35,21 +35,21 @@ npm run validate:environment
 npm run test:environment
 ```
 
-Staging and production hosts are allowlisted only after verification. EAS profiles are in `eas.json`; an account owner must configure the remote EAS project and environment variables before any EAS build. No cloud builds are started by this setup.
+Normal local development and the Android development build use the production API at `https://api.admiino.com`. EAS profiles are in `eas.json`; the development profile is a development client/APK build type with production runtime configuration. Automated backend tests must use their explicitly supplied staging target, never the mobile runtime configuration.
 
 ## Development builds
 
 Expo Go is a shared native container with a fixed set of native modules. The installed Expo Development Client is built for this app and can include its configured native modules; both use Metro for JavaScript development and refresh.
 
-Native builds are blocked until the app owner approves the iOS bundle identifier and Android package identifier. Once approved, configure the corresponding `EXPO_IOS_BUNDLE_IDENTIFIER` or `EXPO_ANDROID_PACKAGE_IDENTIFIER` locally or in the EAS environment:
+The Android package is `com.admiino.mobile`. The iOS bundle identifier remains pending owner approval. Configure only the iOS identifier when approved:
 
 - **iOS simulator:** `npx expo run:ios --simulator "iPhone 16"` (requires Xcode and the approved identifier).
-- **Android emulator/device:** start an Android emulator or connect an authorized device, then run `npx expo run:android` (requires Android tooling and the approved identifier).
-- **EAS Android development build:** after an account owner links/configures the EAS project and environment, run `npx eas-cli build --profile development --platform android`. EAS builds may consume paid resources; this setup did not run one.
+- **Android emulator/device:** start an Android emulator or connect an authorized device, then run `npx expo run:android` (uses `com.admiino.mobile`).
+- **EAS Android development build:** after Admiino token authentication and Android signing are available, run `npx eas-cli build --profile development --platform android`.
 
-The current `development` EAS profile enables the development client and internal distribution. The `preview` and `production` profiles are configuration only; neither has been built or submitted.
+The current `development` EAS profile enables the development client, internal distribution and production API runtime. The `production` profile remains a store-distribution configuration and is not automatically submitted.
 
-The starter screen only verifies that the application boots. There is no backend connection, authentication, or final app identifier configured. iOS bundle and Android package identifiers remain pending decisions.
+The starter screen and automated suites use mocks where applicable. Production API connectivity is configured for normal mobile startup; iOS bundle identity remains pending approval.
 
 ## Approved project documents
 
@@ -60,10 +60,6 @@ Place the approved project rules at the repository root as `AGENTS.md`.
 
 Do not replace an approved document when adding or updating files.
 
-## Branching proposal
+## Branching policy
 
-- `main`: approved releases.
-- `staging`: development integration.
-- `feature/*`: individual development phases.
-
-Branches and remote changes are managed only with explicit approval.
+All approved Admiino Mobile work goes directly to `main`. Do not create or use staging or feature branches for this repository.

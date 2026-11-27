@@ -36,10 +36,11 @@ export default function appConfig(): ExpoConfig {
     'EXPO_IOS_BUNDLE_IDENTIFIER',
     /^[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$/,
   );
-  const androidPackage = optionalIdentifier(
-    'EXPO_ANDROID_PACKAGE_IDENTIFIER',
-    /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/,
-  );
+  const androidPackage =
+    optionalIdentifier(
+      'EXPO_ANDROID_PACKAGE_IDENTIFIER',
+      /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/,
+    ) ?? 'com.admiino.mobile';
 
   return {
     owner: 'admiino-pte',
@@ -52,7 +53,7 @@ export default function appConfig(): ExpoConfig {
     userInterfaceStyle: 'automatic',
     ...(iosBundleIdentifier ? { ios: { bundleIdentifier: iosBundleIdentifier } } : {}),
     android: {
-      ...(androidPackage ? { package: androidPackage } : {}),
+      package: androidPackage,
       adaptiveIcon: {
         backgroundColor: '#1E149F',
         foregroundImage: './assets/admiino/icons/android-adaptive-foreground.png',
@@ -66,6 +67,7 @@ export default function appConfig(): ExpoConfig {
     },
     plugins: [
       'expo-router',
+      'expo-image',
       'expo-sharing',
       'expo-secure-store',
       [

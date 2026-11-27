@@ -4,7 +4,7 @@ jobs:
   build_android_development:
     name: Build Android development APK
     type: build
-    environment: development
+    environment: production
     params:
       platform: android
       profile: development

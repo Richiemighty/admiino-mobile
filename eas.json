@@ -7,9 +7,11 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "environment": "development",
+      "environment": "production",
       "env": {
-        "EXPO_PUBLIC_APP_ENV": "development"
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.admiino.com",
+        "EXPO_PUBLIC_API_REQUIRED": "true"
       },
       "ios": {
         "simulator": false
@@ -19,21 +21,13 @@
         "image": "latest"
       }
     },
-    "preview": {
-      "distribution": "internal",
-      "environment": "preview",
-      "env": {
-        "EXPO_PUBLIC_APP_ENV": "staging"
-      },
-      "android": {
-        "buildType": "apk"
-      }
-    },
     "production": {
       "distribution": "store",
       "environment": "production",
       "env": {
-        "EXPO_PUBLIC_APP_ENV": "production"
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.admiino.com",
+        "EXPO_PUBLIC_API_REQUIRED": "true"
       }
     }
   }
